@@ -122,21 +122,21 @@ freeall()
 }
 
 /*
- * bufempty() - return TRUE if the buffer is empty
- */
-bool_t
-bufempty()
-{
-	return (buf1line() && Filemem->linep->s[0] == NUL);
-}
-
-/*
  * buf1line() - return TRUE if there is only one line
  */
 bool_t
 buf1line()
 {
 	return (Filemem->linep->next == Fileend->linep);
+}
+
+/*
+ * bufempty() - return TRUE if the buffer is empty
+ */
+bool_t
+bufempty()
+{
+	return (buf1line() && Filemem->linep->s[0] == NUL);
 }
 
 /*

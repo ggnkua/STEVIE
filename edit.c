@@ -6,6 +6,7 @@
  */
 
 #include "stevie.h"
+void insertchar(int c);
 
 /*
  * This flag is used to make auto-indent work right on lines where only

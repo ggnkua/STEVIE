@@ -7,9 +7,8 @@
 
 #include "stevie.h"
 
-static	void	openfwd(), openbwd();
-
-extern	int	did_ai;
+static void openfwd();
+static void openbwd();
 
 /*
  * opencmd
@@ -17,10 +16,7 @@ extern	int	did_ai;
  * Add a blank line above or below the current line.
  */
 
-void
-opencmd(dir, can_ai)
-int	dir;
-int	can_ai;			/* if true, consider auto-indent */
+void opencmd(int dir, int can_ai /* if true, consider auto-indent */)
 {
 	if (dir == FORWARD)
 		openfwd(can_ai);
@@ -28,9 +24,7 @@ int	can_ai;			/* if true, consider auto-indent */
 		openbwd(can_ai);
 }
 
-static void
-openfwd(can_ai)
-int	can_ai;
+static void openfwd(int can_ai)
 {
 	LINE	*l;
 	LPTR	*next;
@@ -99,9 +93,7 @@ int	can_ai;
 	cursupdate();		/* update Cursrow before insert */
 }
 
-static void
-openbwd(can_ai)
-int	can_ai;
+static void openbwd(int can_ai)
 {
 	LINE	*l;
 	LPTR	*prev;

@@ -31,6 +31,12 @@ static	bool_t	doecmd();
 static	void	badcmd(), doshell(), get_range();
 static	LPTR	*get_line();
 
+void dotag(char *tag, bool_t force);
+void gotocmd(bool_t clr, bool_t fresh, bool_t firstc);
+void msg(char *s);
+void emsg(char *s);
+void wait_return();
+
 #ifdef	MEGAMAX
 overlay "cmdline"
 #endif

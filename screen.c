@@ -6,6 +6,8 @@
  */
 
 #include "stevie.h"
+void updatescreen();
+void s_ins(int row, int nlines);
 
 /*
  * The following variable is set (in filetonext) to the number of physical

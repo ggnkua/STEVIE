@@ -77,6 +77,9 @@ char **files;		/* list of input files */
 int  numfiles;		/* number of input files */
 int  curfile;		/* number of the current file */
 
+void stuffin(char *s);
+void stuffnum(int n);
+
 static void
 usage()
 {

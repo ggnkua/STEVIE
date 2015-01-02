@@ -15,6 +15,8 @@
 static	void	doshift(), dodelete(), doput(), dochange();
 static	void	tabinout(), startinsert();
 static	bool_t	dojoin(), doyank();
+void resetundo();
+char *mkstr(char c);
 
 /*
  * Macro evaluates true if char 'c' is a valid identifier character

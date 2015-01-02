@@ -7,7 +7,7 @@
 
 #include "stevie.h"
 
-#include <regexp.h>	/* Henry Spencer's regular expression routines */
+#include "regexp/regexp.h"	/* Henry Spencer's regular expression routines */
 
 #ifdef	MEGAMAX
 overlay "search"
@@ -78,13 +78,15 @@ register char	*s;
 
 static char *laststr = NULL;
 static int lastsdir;
+//static LPTR *bcksearch(), *fwdsearch();
+static LPTR *bcksearch(char *str);
+static LPTR *fwdsearch(char *str);
 
 static LPTR *
 ssearch(dir,str)
 int	dir;	/* FORWARD or BACKWARD */
 char	*str;
 {
-	static LPTR *bcksearch(), *fwdsearch();
 	LPTR	*pos;
 
 	if ( laststr != NULL )
@@ -147,12 +149,12 @@ int	flag;
 /*
  * regerror - called by regexp routines when errors are detected.
  */
-void
+/*void
 regerror(s)
 char	*s;
 {
 	emsg(s);
-}
+}*/
 
 static LPTR *
 fwdsearch(str)
