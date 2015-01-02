@@ -1,0 +1,124 @@
+STEVIE - ST Editor for VI Enthusiasts   ...Tim Thompson...twitch!tjt...
+=====================================
+
+The STEVIE editor is a fairly accurate (in the small subset of commands
+it chooses to implement) version of the VI editor.  It was written
+at a time when alternatives (ie. VIX) were not available.  To VI users,
+STEVIE should provide a much more familiar environment than VIX, but has
+nowhere near the capabilities (or speed), in general.
+
+Features/Limitations
+====================
+
+- The "." (repeat last operation) and "u" (undo last insertion or
+  deletion) commands are available, and will repeat/undo almost
+  anything.
+
+- The commands implemented in STEVIE happen to be the subset of
+  VI commands used by its author (suprise!).  A fair number of
+  additional (positioning and substitution) commands should be
+  easy to add.  Regular expressions and global substitutions
+  are not implemented.
+
+- STEVIE is limited to editing files < 64K.  The source code has no
+  built-in limitations, but the file is kept in memory as a single
+  contiguous stream of bytes.  This implies various limitations,
+  among them the fact that operations such as insert and delete will
+  slow down (by a LOT, in the current implementation) as the file
+  being edited grows larger.  The slowness could be eliminated by
+  some reworking, which I'm unmotiviated to do, since I rarely edit
+  files larger than 16K.  Scrolling in general is also unnecessarily
+  slow.  Reading/writing files is also slow.
+
+- Known glitches/annoyances: <control-d> scrolling works strangely.
+  Long (>80 chars) lines are usually handled okay, but strange
+  (positional) things sometime happen at the bottom of the screen.
+  Backspacing at the beginning of a line, in insert mode, isn't handled
+  correctly.  Undoing insertions at the end of a line are sometimes
+  off by a character.  The :r command does not work very well.
+  A final line that does not end in '\n' is troublesome.
+
+- There is some support in the editor for displaying and editing binary
+  files.  Giving a '-b' option tells the editor that you are intentionally
+  editing a binary file.  Unprintable characters are displayed in a
+  [xxx] format, where xxx is either octal or hex (if you use the -x
+  option).  The binary editing support is mostly an untested hack
+  (although it was one of the original goals of the editor, so the
+  support for it was not unplanned).  If it works, fine; I'm not
+  claiming that it does.
+
+- Although STEVIE has been used with no problems for several months,
+  it no doubt contains bugs that will surface when used by others.
+  Cautious initial use is recommended.
+
+Commands
+========
+
+   Some commands can make use of a numeric prefix, indicated in
+   the summary below as [#].
+
+   Cursor movement commands
+   ========================
+   control-l         Redraw screen
+   control-d         Cursor down 1/2 screen
+   control-u         Cursor up 1/2 screen
+   control-f         Cursor forward 1 screen
+   control-b         Cursor back 1 screen
+   control-g         Give info on file
+
+      h              Cursor left 1 char
+      j              Cursor down 1 char
+      k              Cursor up 1 char
+      l              Cursor right 1 char
+      $              Cursor to end of line
+      ^ -or- 0       Cursor to beginning of line
+      b              Cursor back 1 word
+      w              Cursor forward 1 word\n\
+      [#]G           Goto line # (or last line if no #)
+
+    Modification commands
+    =====================
+    x           Delete 1 char
+    dw          Delete 1 word
+    D           Delete rest of line
+    [#]dd       Delete 1 (or #) lines
+    C           Change rest of line
+    cw          Change word
+    cc          Change line
+    r           Replace single character
+    [#]yy       Yank 1 (or #) lines
+    p           Insert last yanked or deleted line(s)
+    P              below (p) or above (P) current line
+    J           Join current and next line
+    [#]<<       Shift line left 1 (or #) tabs
+    [#]>>       Shift line right 1 (or #) tabs
+    i           Enter Insert mode (<ESC> to exit)
+    a           Append (<ESC> to exit) \n\
+    o           Open line (<ESC> to exit)\n\
+
+    Miscellaneous
+    =============
+    .           Repeat last operation.  The works for most (but not all)
+		commands, including insertions.
+    u           Undo last insert or delete.   This works for most
+		operations, although there are undoubtedly some for
+		which it will not.
+    /str/       Search for 'str' (NO REGULAR EXPRESSIONS)
+    ?str?       Search backward for 'str'
+    n           Repeat previous search
+    :.=         Print current line number
+    :$=         Print number of lines in file
+    H		Help - a quick summary of commands
+
+    File manipulation
+    =================
+    :w          Write file
+    :wq         Write and quit
+    :e {file}   Edit a new file
+    :e!         Re-read current file
+    :f          Print file into (current line and total # of lines)
+    :f {file}   Change current file name
+    :q          Quit
+    :q!         Quit (no save)
+
+
