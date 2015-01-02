@@ -1,0 +1,1500 @@
+# Enclosed is (part 2 of) the source for a mini-VI which I wrote when I
+# first got the ST, to make things easier for my own development.  Although
+# it is somewhat minimal in capabilities, it does have a fairly good
+# implementation of the 'u' (undo) and '.' (repeat) commands.  I have
+# much more interesting things to work on these days, so I am unlikely
+# to provide any support.  It has worked well for 6 months, and since
+# no alternatives have appeared on the net (other than VIX, which is
+# too different for me), I figure it might be useful.
+#      ...Tim Thompson...ihnp4!twitch!tjt...
+
+#! /bin/sh
+# This is a shell archive, meaning:
+# 1. Remove everything above the #! /bin/sh line.
+# 2. Save the resulting text in a file.
+# 3. Execute the file with /bin/sh (not csh) to create the files:
+#	main.c
+#	misccmds.c
+#	normal.c
+#	stevie.h
+#	window.c
+# This archive created: Sun Jun 28 13:18:51 1987
+export PATH; PATH=/bin:$PATH
+if test -f 'main.c'
+then
+	echo shar: will not over-write existing file "'main.c'"
+else
+cat << \SHAR_EOF > 'main.c'
+/*
+ * STEVIE - ST Editor for VI Enthusiasts   ...Tim Thompson...twitch!tjt...
+ */
+
+#include <stdio.h>
+#include <ctype.h>
+#include "stevie.h"
+
+#ifdef ATARI
+#include <osbind.h>
+#endif
+
+#define NULL 0
+
+int Rows;		/* Number of Rows and Columns */
+int Columns;		/* in the current window. */
+
+char *Realscreen;	/* What's currently on the screen, a single */
+			/* array of size Rows*Columns. */
+char *Nextscreen;	/* What's to be put on the screen. */
+
+char *Filename = NULL;	/* Current file name */
+
+char *Filemem;		/* The contents of the file, as a single array. */
+
+char *Filemax;		/* Pointer to the end of allocated space for */
+			/* Filemem. (It points to the first byte AFTER */
+			/* the allocated space.) */
+
+char *Fileend;		/* Pointer to the end of the file in Filemem. */
+			/* (It points to the byte AFTER the last byte.) */
+
+char *Topchar;		/* Pointer to the byte in Filemem which is */
+			/* in the upper left corner of the screen. */
+
+char *Botchar;		/* Pointer to the byte in Filemem which is */
+			/* just off the bottom of the screen. */
+
+char *Curschar;		/* Pointer to byte in Filemem at which the */
+			/* cursor is currently placed. */
+
+int Cursrow, Curscol;	/* Current position of cursor */
+
+int Cursvcol;		/* Current virtual column, the column number of */
+			/* the file's actual line, as opposed to the */
+			/* column number we're at on the screen.  This */
+			/* makes a difference on lines that span more */
+			/* than one screen line. */
+
+int State = NORMAL;	/* This is the current state of the command */
+			/* interpreter. */
+
+int Prenum = 0;		/* The (optional) number before a command. */
+
+char *Insstart;		/* This is where the latest insert/append */
+			/* mode started. */
+
+int Changed = 0;	/* Set to 1 if something in the file has been */
+			/* changed and not written out. */
+
+int Debug = 0;
+
+int Binary = 0;		/* Set to 1 if the file should be read and written */
+			/* in binary mode (no cr-lf translation). */
+
+char Redobuff[1024];	/* Each command should stuff characters into this */
+			/* buffer that will re-execute itself. */
+
+char Undobuff[1024];	/* Each command should stuff characters into this */
+			/* buffer that will undo its effects. */
+
+char Insbuff[1024];	/* Each insertion gets stuffed into this buffer. */
+
+char *Uncurschar = NULL;/* Curschar is restored to this before undoing. */
+
+int Ninsert = 0;	/* Number of characters in the current insertion. */
+int Undelchars = 0;	/* Number of characters to delete, when undoing. */
+char *Insptr = NULL;
+
+main(argc,argv)
+int argc;
+char **argv;
+{
+	int mode = 8;
+
+	while ( argc>1 && argv[1][0] == '-' ) {
+		switch (argv[1][1]) {
+		case 'x':
+			mode = 16;
+			break;
+		case 'o':
+			mode = 8;
+			break;
+		case 'd':
+			Debug = 1;
+			break;
+		case 'b':
+			Binary = 1;
+			break;
+		}
+		argc--;
+		argv++;
+	}
+
+	if ( argc <= 1 ) {
+		fprintf(stderr,"usage: stevie {file}\n");
+		exit(1);
+	}
+
+	Filename = strsave(argv[1]);
+
+	windinit();
+
+	/* Make sure Rows/Columns are big enough */
+	if ( Rows < 3 || Columns < 16 ) {
+		fprintf(stderr,"Rows=%d Columns=%d not big enough!\n",
+			Rows,Columns);
+		windexit(0);
+	}
+
+	switch ( mode ) {
+	case 8:
+		octchars();
+		break;
+	case 16:
+		hexchars();
+		break;
+	}
+
+	screenalloc();
+	filealloc();
+
+	screenclear();
+
+	Fileend = Filemem;
+	if ( readfile(Filename,Fileend,0) )
+		filemess("[New File]");
+	Topchar = Curschar = Filemem;
+
+	updatescreen();
+	
+	edit();
+
+	windexit(0);
+}
+
+/*
+ * filetonext()
+ *
+ * Based on the current value of Topchar, transfer a screenfull of
+ * stuff from Filemem to Nextscreen, and update Botchar.
+ */
+
+filetonext()
+{
+	int row, col;
+	char *screenp = Nextscreen;
+	char *memp = Topchar;
+	char *endscreen;
+	char *nextrow;
+	char extra[16];
+	int nextra = 0;
+	int c;
+	int n;
+
+	/* The number of rows shown is Rows-1. */
+	/* The last line is the status/command line. */
+	endscreen = &screenp[(Rows-1)*Columns];
+
+	row = col = 0;
+	while ( screenp < endscreen && memp < Fileend ) {
+
+		/* Get the next character to put on the screen. */
+
+		/* The 'extra' array contains the extra stuff that is */
+		/* inserted to represent special characters (tabs, and */
+		/* other non-printable stuff.  The order in the 'extra' */
+		/* array is reversed. */
+
+		if ( nextra > 0 )
+			c = extra[--nextra];
+		else {
+			c = (unsigned)(0xff & (*memp++));
+			/* when getting a character from the file, we */
+			/* may have to turn it into something else on */
+			/* the way to putting it into 'Nextscreen'. */
+			if ( c == '\t' ) {
+				strcpy(extra,"        ");
+				/* tab amount depends on current column */
+				nextra = (7 - col%8);
+				c = ' ';
+			}
+			else if ( (n=chars[c].ch_size) > 1 ) {
+				char *p;
+				nextra = 0;
+				p = chars[c].ch_str;
+				/* copy 'ch-str'ing into 'extra' in reverse */
+				while ( n > 1 )
+					extra[nextra++] = p[--n];
+				c = p[0];
+			}
+		}
+
+		if ( c == '\n' ) {
+			row++;
+			/* get pointer to start of next row */
+			nextrow = &Nextscreen[row*Columns];
+			/* blank out the rest of this row */
+			while ( screenp != nextrow )
+				*screenp++ = ' ';
+			col = 0;
+			continue;
+		}
+		/* store the character in Nextscreen */
+		if ( col >= Columns ) {
+			row++;
+			col = 0;
+		}
+		*screenp++ = c;
+		col++;
+	}
+	/* make sure the rest of the screen is blank */
+	while ( screenp < endscreen )
+		*screenp++ = ' ';
+	/* put '~'s on rows that aren't part of the file. */
+	if ( col != 0 )
+		row++;
+	while ( row < Rows ) {
+		Nextscreen[row*Columns] = '~';
+		row++;
+	}
+	Botchar = memp;
+}
+
+/*
+ * nexttoscreen
+ *
+ * Transfer the contents of Nextscreen to the screen, using Realscreen
+ * to avoid unnecessary output.
+ */
+
+nexttoscreen()
+{
+	char *np = Nextscreen;
+	char *rp = Realscreen;
+	char *endscreen;
+	char nc;
+	int row = 0, col = 0;
+	int gorow = -1, gocol = -1;
+
+	endscreen = &np[(Rows-1)*Columns];
+
+	for ( ; np < endscreen ; np++,rp++ ) {
+		/* If desired screen (contents of Nextscreen) does not */
+		/* match what's really there, put it there. */
+		if ( (nc=(*np)) != (*rp) ) {
+			*rp = nc;
+			/* if we are positioned at the right place, */
+			/* we don't have to use windgoto(). */
+			if ( ! (gorow == row && gocol == col) )
+				windgoto(gorow=row,gocol=col);
+			windputc(nc);
+			gocol++;
+		}
+		if ( ++col >= Columns ) {
+			col = 0;
+			row++;
+		}
+	}
+	windrefresh();
+}
+
+updatescreen()
+{
+	filetonext();
+	nexttoscreen();
+}
+
+screenclear()
+{
+	int n;
+
+	windclear();
+	/* blank out the stored screens */
+	for ( n=Rows*Columns-1; n>=0; n-- ) {
+		Realscreen[n] = ' ';
+		Nextscreen[n] = ' ';
+	}
+}
+
+filealloc()
+{
+	if ( (Filemem=malloc((unsigned)FILELENG)) == NULL ) {
+		fprintf(stderr,"Unable to allocate %d bytes for file memory!\n",
+			FILELENG);
+		exit(1);
+	}
+	Filemax = Filemem + FILELENG;
+}
+
+screenalloc()
+{
+	Realscreen = malloc((unsigned)(Rows*Columns));
+	Nextscreen = malloc((unsigned)(Rows*Columns));
+}
+
+readfile(fname,fromp,nochangename)
+char *fname;
+char *fromp;
+int nochangename;	/* if 1, don't change the Filename */
+{
+#ifdef ATARI
+	static char currdisk = 0;
+	char fbuff[128];
+	int c1, c2;
+#endif
+	FILE *f;
+	char buff[128];
+	char *p;
+	int c, n;
+	int unprint = 0;
+
+#ifdef ATARI
+	if ( currdisk == 0 )
+		currdisk = 'a' + Dgetdrv();
+
+	/* If a drive is specified, it is used from then */
+	/* on as the default drive. */
+	c1 = tolower(*fname);
+	c2 = *(fname+1);
+	if ( c2 == ':' && c1>='a' && c1<='z' )
+		currdisk = c1;
+	else {
+		/* if no drive is specified, use the default one. */
+		sprintf(fbuff,"%c:\\%s",toupper(currdisk),fname);
+		fname = fbuff;
+	}
+#endif
+	if ( ! nochangename )
+		Filename = strsave(fname);
+
+#ifdef ATARI
+	if ( (f=fopen(fname,Binary?"br":"r")) == NULL ) {
+#else
+	if ( (f=fopen(fname,"r")) == NULL ) {
+#endif
+		Fileend = Filemem;
+		return(1);
+	}
+
+	for ( n=0; (c=getc(f)) != EOF; n++ ) {
+		if ( ! (isprint(c)||isspace(c)) )
+			unprint++;
+		if ( fromp >= Filemax ) {
+			fprintf(stderr,"File too long (limit is %d)!\n",FILELENG);
+			exit(1);
+		}
+		/* Insert the char at the current point by shifting
+		/* everything down. */
+		for ( p=Fileend; p>fromp; p-- )
+			*p = *(p-1);
+		*fromp++ = c;
+		if ( Fileend < fromp )
+			Fileend = fromp;
+	}
+	if ( ! Binary && unprint > 0 ) {
+		sprintf(buff,"%d unprintable chars!  Perhaps binary mode (-b) should be used?",unprint);
+		message(buff);
+		sleep(2);
+	}
+	if ( unprint > 0 )
+		p = "\"%s\" %d characters (%d un-printable)  (Press 'H' for help)";
+	else
+		p = "\"%s\" %d characters  (Press 'H' for help)";
+	sprintf(buff,p,fname,n,unprint);
+	message(buff);
+	fclose(f);
+	return(0);
+}
+
+static char getcbuff[1024];
+static char *getcnext = NULL;
+
+stuffin(s)
+char *s;
+{
+	if ( getcnext == NULL ) {
+		strcpy(getcbuff,s);
+		getcnext = getcbuff;
+	}
+	else
+		strcat(getcbuff,s);
+}
+
+addtobuff(s,c1,c2,c3,c4,c5,c6)
+char *s;
+char c1, c2, c3, c4, c5, c6;
+{
+	char *p = s;
+	if ( (*p++ = c1) == '\0' )
+		return;
+	if ( (*p++ = c2) == '\0' )
+		return;
+	if ( (*p++ = c3) == '\0' )
+		return;
+	if ( (*p++ = c4) == '\0' )
+		return;
+	if ( (*p++ = c5) == '\0' )
+		return;
+	if ( (*p++ = c6) == '\0' )
+		return;
+}
+
+vgetc()
+{
+	if ( getcnext != NULL ) {
+		int nextc = *getcnext++;
+		if ( *getcnext == '\0' ) {
+			*getcbuff = '\0';
+			getcnext = NULL;
+		}
+		return(nextc);
+	}
+	return(windgetc());
+}
+
+vpeekc()
+{
+	if ( getcnext != NULL )
+		return(*getcnext);
+	return(-1);
+}
+
+/*
+ * anyinput
+ *
+ * Return non-zero if input is pending.
+ */
+
+anyinput()
+{
+	if ( getcnext != NULL )
+		return(1);
+	return(0);
+}
+
+#ifdef ATARI
+sleep(n)
+int n;
+{
+	int k;
+
+	k = Tgettime();
+	while ( Tgettime() <= k+n )
+		;
+}
+#endif
+SHAR_EOF
+fi # end of overwriting check
+if test -f 'misccmds.c'
+then
+	echo shar: will not over-write existing file "'misccmds.c'"
+else
+cat << \SHAR_EOF > 'misccmds.c'
+/*
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
+ */
+
+#include <stdio.h>
+#include <ctype.h>
+#include "stevie.h"
+
+/*
+ * opencmd
+ *
+ * Add a blank line below the current line.
+ */
+
+opencmd()
+{
+	/* get to the end of the current line */ 
+	while ( Curschar<Fileend && (*Curschar) != '\n' )
+		Curschar++;
+	/* Try to handle a file that doesn't end with a newline */
+	if ( Curschar >= Fileend )
+		Curschar = Fileend-1;
+	/* Add the blank line */
+	appchar('\n');
+}
+
+issepchar(c)
+char c;
+{
+	if ( strchr(WORDSEP,c) != NULL )
+		return(1);
+	return(0);
+}
+
+cntlines(pbegin,pend)
+char *pbegin, *pend;
+{
+	int lnum = 1;
+	char *p;
+
+	for ( p=pbegin; p<pend; ) {
+		if ( *p++ == '\n' )
+			lnum++;
+	}
+	return(lnum);
+}
+
+fileinfo()
+{
+	char buff[128];
+
+	sprintf(buff,"\"%s\"%s line %d of %d",
+		Filename,
+		Changed?" [Modified]":"",
+		cntlines(Filemem,Curschar),
+		cntlines(Filemem,Fileend)-1);
+	message(buff);
+}
+
+gotoline(n)
+int n;
+{
+	char *p;
+
+	if ( n == 0 ) {
+		if ( (p=prevline(Fileend)) != NULL )
+			Curschar = p;
+	}
+	else {
+		/* Start at the top of the file and go down 'n'-1 lines */
+		Curschar = Filemem;
+		while ( --n > 0 ) {
+			if ( (p=nextline(Curschar)) == NULL )
+				break;
+			Curschar = p;
+		}
+	}
+	Topchar = Curschar;
+	for ( n=0; n<Rows/2; n++ ) {
+		if ( (p=prevline(Topchar)) == NULL )
+			break;
+		Topchar = p;
+	}
+	updatescreen();
+}
+
+char *Savedline = NULL;
+int Savednum = 0;
+
+/*
+ * yankline
+ *
+ * Save a copy of the current line(s) for later 'p'lacing.
+ */
+
+yankline(n)
+{
+	char *savep, *p, *q;
+	int leng, k;
+
+	if ( Savedline != NULL )
+		free(Savedline);
+	savep = Curschar;
+	/* go to the beginning of the current line. */
+	beginline();
+	/* compute length of line */
+	for ( p=Curschar,leng=0; ; p++ ) {
+		if ( *p == '\n' ) {
+			/* keep going until we've seen 'n' lines */
+			if ( --n <= 0 )
+				break;
+		}
+		leng++;
+	}
+	/* save a copy of it */
+	Savedline = malloc((unsigned)(leng+2));
+	for ( p=Curschar,q=Savedline,k=0; k<leng; k++ )
+		*q++ = *p++;
+	/* get the final newline */
+	*q++ = *p;
+	*q = '\0';
+	Curschar = savep;
+	Savednum = leng+1;
+}
+
+/*
+ * putline
+ *
+ * If there is a currently saved line(s), 'p'ut it.
+ * If k==1, 'P'ut the line (i.e. above instead of below.
+ */
+
+putline(k)
+int k;
+{
+	char *p;
+	int n;
+
+	if ( Savedline == NULL )
+		return;
+	message("Inserting saved stuff...");
+	if ( k == 0 ) {
+		/* get to the end of the current line */
+		while ( Curschar<Fileend && *Curschar != '\n' )
+			Curschar++;
+	}
+	else
+		beginline();
+	/* append or insert the characters of the saved line */
+	for ( p=Savedline,n=0; n<Savednum; p++,n++ ) {
+		if ( k == 0 )
+			appchar(*p);
+		else
+			inschar(*p);
+	}
+	/* We want to end up at the beginning of the line. */
+	while ( n-->1 )
+		Curschar--;
+	if ( k == 1 )
+		Curschar--;
+	beginline();
+	message("");
+	updatescreen();
+}
+
+inschar(c)
+int c;
+{
+	register char *p;
+
+	/* Move everything in the file over to make */
+	/* room for the new char. */
+	if ( ! canincrease(1) )
+		return;
+
+	for ( p=Fileend; p>Curschar; p-- ) {
+		*p = *(p-1);
+	}
+	*Curschar++ = c;
+	Fileend++;
+	CHANGED;
+}
+
+insstr(s)
+char *s;
+{
+	register char *p;
+	int k, n = strlen(s);
+
+	/* Move everything in the file over to make */
+	/* room for the new string. */
+	if ( ! canincrease(n) )
+		return;
+
+	for ( p=Fileend-1+n; p>Curschar; p-- ) {
+		*p = *(p-n);
+	}
+	for ( k=0; k<n; k++ )
+		*Curschar++ = *s++;
+	Fileend += n;
+	CHANGED;
+}
+
+appchar(c)
+int c;
+{
+	char *p, *endp;
+
+	/* Move everything in the file over to make */
+	/* room for the new char. */
+	if ( ! canincrease(1) )
+		return;
+
+	endp = Curschar+1;
+	for ( p=Fileend; p>endp; p-- ) {
+		*p = *(p-1);
+	}
+	*(++Curschar) = c;
+	Fileend++;
+	CHANGED;
+}
+
+canincrease(n)
+int n;
+{
+	if ( (Fileend+n) >= Filemax ) {
+		message("Can't add anything, file is too big!");
+		State = NORMAL;
+		return(0);
+	}
+	return(1);
+}
+
+#define NULL 0
+
+delchar()
+{
+	char *p;
+
+	/* Check for degenerate case; there's nothing in the file. */
+	if ( Filemem == Fileend )
+		return;
+	/* Delete the character at Curschar by shifting everything */
+	/* in the file down. */
+	for ( p=Curschar+1; p<Fileend; p++ )
+		*(p-1) = *p;
+	/* If we just took off the last character of a non-blank line, */
+	/* we don't want to end up positioned at the newline. */
+	if ( *Curschar=='\n' && Curschar>Filemem && *(Curschar-1)!='\n' )
+		Curschar--;
+	Fileend--;
+	CHANGED;
+}
+
+delword(deltrailing)
+int deltrailing;	/* 1 if trailing white space should be removed. */
+{
+	int c = *Curschar;
+	char *p = Undobuff;
+
+	/* The Undo string is an 'i'nsert of the word we're deleting. */
+	*p++ = 'i';
+	/* If we're positioned on a word separator... */
+	if ( issepchar(c) && ! isspace(c) ) {
+		/* If we're on a non-space separator, remove */
+		/* the separators and any following space. */
+		while ( issepchar(c) && ! isspace(c) ) {
+			/* Add the deleted character to the Undobuff */
+			*p++ = *Curschar;
+			delchar();
+			c = *Curschar;
+		}
+	}
+	else {	/* we're positioned in the middle of a word */
+		int endofline = 0;
+		while ( ! issepchar(*Curschar) && *Curschar != '\n' ) {
+			/* If the next char is a newline, we note */
+			/* that fact here, because delchar() won't */
+			/* position us there afterword. */
+			if ( *(Curschar+1) == '\n' )
+				endofline = 1;
+			/* Add the deleted character to the Undobuff */
+			*p++ = *Curschar;
+			delchar();
+			if ( endofline )
+				break;
+		}
+	}
+	if ( deltrailing ) {
+		/* remove any trailing white space */
+		while ( isspace(*Curschar) && *Curschar != '\n' ) {
+			/* Add the deleted character to the Undobuff */
+			*p++ = *Curschar;
+			delchar();
+		}
+	}
+	*p++ = '\033';
+	*p = '\0';
+}
+
+delline(nlines)
+{
+	int nchars;
+	char *p, *q;
+
+	/* If we're not at the beginning of the line, get there. */
+	if ( *Curschar != '\n' ) {
+		/* back up to the previous newline (or the beginning */
+		/* of the file. */
+		while ( Curschar > Filemem ) {
+			if ( *Curschar == '\n' ) {
+				Curschar++;
+				break;
+			}
+			Curschar--;
+		}
+	}
+	message("Deleting...");
+	while ( nlines-- > 0 ) {
+		/* Count the characters in the line */
+		for ( nchars=1,p=Curschar; p<Fileend&&*p!='\n'; p++,nchars++ )
+			;
+		/* Delete the characters of the line */
+		/* by moving everything else in the file down. */
+		q = Curschar;
+		p = Curschar+nchars;
+		while ( p<Fileend )
+			*q++ = *p++;
+		Fileend -= nchars;
+		CHANGED;
+
+		/* If we delete the last line in the file, back up */
+		if ( Curschar >= Fileend ) {
+			if ( (Curschar=prevline(Curschar)) == NULL )
+				Curschar = Filemem;
+			/* and don't try to delete any more lines */
+			break;
+		}
+	}
+	message("");
+}
+
+char *strchr(s,c)
+char *s;
+int c;
+{
+	do {
+		if ( *s == c )
+			return(s);
+	} while (*s++);
+	return(NULL);
+}
+SHAR_EOF
+fi # end of overwriting check
+if test -f 'normal.c'
+then
+	echo shar: will not over-write existing file "'normal.c'"
+else
+cat << \SHAR_EOF > 'normal.c'
+/*
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
+ */
+
+#include <ctype.h>
+#include "stevie.h"
+
+/*
+ * normal
+ *
+ * Execute a command in normal mode.
+ */
+
+normal(c)
+int c;
+{
+	char *p, *q;
+	int nchar, n;
+
+	switch(c){
+	case 'H':
+		help();
+		/* fall through purposely */
+	case '\014':
+		screenclear();
+		updatescreen();
+		break;
+	case 04:
+		/* control-d */
+		if ( ! onedown(10) )
+			beep();
+		break;
+	case  025:
+		/* control-u */
+		if ( ! oneup(10) )
+			beep();
+		break;
+	case 06:
+		/* control-f */
+		if ( ! onedown(Rows) )
+			beep();
+		break;
+	case 02:
+		/* control-b */
+		if ( ! oneup(Rows) )
+			beep();
+		break;
+	case '\007':
+		fileinfo();
+		break;
+	case 'G':
+		gotoline(Prenum);
+		break;
+	case 'l':
+		if ( ! oneright() )
+			beep();
+		break;
+	case 'h':
+		if ( ! oneleft() )
+			beep();
+		break;
+	case 'k':
+		if ( ! oneup(1) )
+			beep();
+		break;
+	case 'j':
+		if ( ! onedown(1) )
+			beep();
+		break;
+	case 'b':
+		/* If we're on the first character of a word, force */
+		/* an initial backup. */
+		if ( ! issepchar(*Curschar) && Curschar>Filemem
+			&& issepchar(*(Curschar-1)) )
+			Curschar--;
+
+		if ( ! issepchar(*Curschar) ) {
+			/* If we start in the middle of a word, back */
+			/* up until we hit a separator. */
+			while ( Curschar>Filemem && !issepchar(*Curschar))
+				Curschar--;
+			if ( issepchar(*Curschar) )
+				Curschar++;
+		}
+		else {
+			/* back up past all separators. */
+			while ( Curschar>Filemem && issepchar(*Curschar))
+				Curschar--;
+			/* back up past all non-separators. */
+			while (Curschar>Filemem && !issepchar(*Curschar)){
+				Curschar--;
+			}
+			if ( issepchar(*Curschar) )
+				Curschar++;
+		}
+		break;
+	case 'w':
+		if ( issepchar(*Curschar) ) {
+			/* If we're on a separator, we advance to */
+			/* the next non-separator char. */
+			while ( (p=Curschar+1) < Fileend ) {
+				Curschar = p;
+				if ( ! issepchar(*Curschar) )
+					break;
+			}
+		}
+		else {
+			/* If we're in the middle of a word, we */
+			/* advance to the next word-separator. */
+			while ( (p=Curschar+1) < Fileend ) {
+				Curschar = p;
+				if ( issepchar(*Curschar) )
+					break;
+			}
+			/* Now go past any trailing white space */
+			while (isspace(*Curschar) && (Curschar+1)<Fileend)
+				Curschar++;
+		}
+		break;
+	case '$':
+		while ( oneright() )
+			;
+		break;
+	case '0':
+	case '^':
+		beginline();
+		break;
+	case 'x':
+		/* Can't do it if we're on a blank line.  (Actually it */
+		/* does work, but we want to match the real 'vi'...) */
+		if ( *Curschar == '\n' )
+			beep();
+		else {
+			addtobuff(Redobuff,'x',NULL);
+			/* To undo it, we insert the same character back. */
+			resetundo();
+			addtobuff(Undobuff,'i',*Curschar,'\033',NULL);
+			Uncurschar = Curschar;
+			delchar();
+			updatescreen();
+		}
+		break;
+	case 'a':
+		/* Works just like an 'i'nsert on the next character. */
+		if ( Curschar < (Fileend-1) )
+			Curschar++;
+		resetundo();
+		startinsert("a");
+		break;
+	case 'i':
+		resetundo();
+		startinsert("i");
+		break;
+	case 'o':
+		opencmd();
+		updatescreen();
+		resetundo();
+		startinsert("o");
+		break;
+	case 'd':
+		nchar = vgetc();
+		n = (Prenum==0?1:Prenum);
+		switch(nchar){
+		case 'd':
+			sprintf(Redobuff,"%ddd",n);
+			/* addtobuff(Redobuff,'d','d',NULL); */
+			beginline();
+			resetundo();
+			Uncurschar = Curschar;
+			yankline(n);
+			delline(n);
+			beginline();
+			updatescreen();
+			/* If we have backed xyzzy, then we deleted the */
+			/* last line(s) in the file. */
+			if ( Curschar < Uncurschar ) {
+				Uncurschar = Curschar;
+				nchar = 'p';
+			}
+			else
+				nchar = 'P';
+			addtobuff(Undobuff,nchar,NULL);
+			break;
+		case 'w':
+			addtobuff(Redobuff,'d','w',NULL);
+			resetundo();
+			delword(1);
+			Uncurschar = Curschar;
+			updatescreen();
+			break;
+		}
+		break;
+	case 'c':
+		nchar = vgetc();
+		switch(nchar){
+		case 'c':
+			resetundo();
+			/* Go to the beginning of the line */
+			beginline();
+			yankline(1);
+			/* delete everything but the newline */
+			while ( *Curschar != '\n' )
+				delchar();
+			startinsert("cc");
+			updatescreen();
+			break;
+		case 'w':
+			resetundo();
+			delword(0);
+			startinsert("cw");
+			updatescreen();
+			break;
+		}
+		break;
+	case 'y':
+		nchar = vgetc();
+		switch(nchar){
+		case 'y':
+			yankline(Prenum==0?1:Prenum);
+			break;
+		default:
+			beep();
+		}
+		break;
+	case '>':
+		nchar = vgetc();
+		n = (Prenum==0?1:Prenum);
+		switch(nchar){
+		case '>':
+			tabinout(0,n);
+			updatescreen();
+			break;
+		default:
+			beep();
+		}
+		break;
+	case '<':
+		nchar = vgetc();
+		n = (Prenum==0?1:Prenum);
+		switch(nchar){
+		case '<':
+			tabinout(1,n);
+			updatescreen();
+			break;
+		default:
+			beep();
+		}
+		break;
+	case '?':
+	case '/':
+	case ':':
+		readcmdline(c);
+		break;
+	case 'n':
+		repsearch();
+		break;
+	case 'C':
+	case 'D':
+		p = Curschar;
+		while ( Curschar >= p )
+			delchar();
+		updatescreen();
+		resetundo();	/* This should really go above the */
+				/* delchars above, and the undobuff should */
+				/* be constructed by them. */
+		if ( c == 'C' ) {
+			Curschar++;
+			startinsert("C");
+		}
+		break;
+	case 'r':
+		nchar = vgetc();
+		resetundo();
+		if ( nchar=='\n' || (!Binary && nchar=='\r') ) {
+			/* Replacing a char with a newline breaks the */
+			/* line in two, and is special. */
+			nchar = '\n';	/* convert \r to \n */
+			/* Save stuff necessary to undo it, by joining */
+			Uncurschar = Curschar-1;
+			addtobuff(Undobuff,'J','i',*Curschar,'\033',NULL);
+			/* Change current character. */
+			*Curschar = nchar;
+			/* We don't want to end up on the '\n' */
+			if ( Curschar > Filemem )
+				Curschar--;
+			else if (Curschar < Fileend )
+				Curschar++;
+		}
+		else {
+			/* Replacing with a normal character */
+			addtobuff(Undobuff,'r',*Curschar,NULL);
+			Uncurschar = Curschar;
+			/* Change current character. */
+			*Curschar = nchar;
+		}
+		/* Save stuff necessary to redo it */
+		addtobuff(Redobuff,'r',nchar,NULL);
+		updatescreen();
+		break;
+	case 'p':
+		putline(0);
+		break;
+	case 'P':
+		putline(1);
+		break;
+	case 'J':
+		for ( p=Curschar; *p!= '\n' && p<(Fileend-1) ; p++ )
+			;
+		if ( p >= (Fileend-1) ) {
+			beep();
+			break;
+		}
+		Curschar = p;
+		delchar();
+		resetundo();
+		Uncurschar = Curschar;
+		addtobuff(Undobuff,'i','\n','\033',NULL);
+		addtobuff(Redobuff,'J',NULL);
+		updatescreen();
+		break;
+	case '.':
+		stuffin(Redobuff);
+		break;
+	case 'u':
+		if ( Uncurschar != NULL && *Undobuff != '\0' ) {
+			Curschar = Uncurschar;
+			stuffin(Undobuff);
+			*Undobuff = '\0';
+		}
+		if ( Undelchars > 0 ) {
+			Curschar = Uncurschar;
+			/* construct the next Undobuff and Redobuff, which */
+			/* will re-insert the characters we're deleting. */
+			p = Undobuff;
+			q = Redobuff;
+			*p++ = *q++ = 'i';
+			while ( Undelchars-- > 0 ) {
+				*p++ = *q++ = *Curschar;
+				delchar();
+			}
+			/* Finish constructing Uncursbuff, and Uncurschar */
+			/* is left unchanged. */
+			*p++ = *q++ = '\033';
+			*p = *q = '\0';
+			/* Undelchars has been reset to 0 */
+			updatescreen();
+		}
+		break;
+	default:
+		beep();
+		break;
+	}
+}
+
+/*
+ * tabinout(inout,num)
+ *
+ * If inout==0, add a tab to the begining of the next num lines.
+ * If inout==1, delete a tab from the begining of the next num lines.
+ */
+
+tabinout(inout,num)
+{
+	int ntodo = num;
+	char *savecurs, *p;
+
+	beginline();
+	savecurs = Curschar;
+	while ( ntodo-- > 0 ) {
+		beginline();
+		if ( inout == 0 )
+			inschar('\t');
+		else {
+			if ( *Curschar == '\t' )
+				delchar();
+		}
+		if ( ntodo > 0 ) {
+			if ( (p=nextline(Curschar)) != NULL )
+				Curschar = p;
+			else
+				break;
+		}
+	}
+	/* We want to end up where we started */
+	Curschar = savecurs;
+	updatescreen();
+	/* Construct re-do and un-do stuff */
+	sprintf(Redobuff,"%d%s",num,inout==0?">>":"<<");
+	resetundo();
+	Uncurschar = savecurs;
+	sprintf(Undobuff,"%d%s",num,inout==0?"<<":">>");
+}
+
+startinsert(initstr)
+char *initstr;
+{
+	char *p, c;
+
+	Insstart = Curschar;
+	Ninsert = 0;
+	Insptr = Insbuff;
+	for (p=initstr; (c=(*p++))!='\0'; )
+		*Insptr++ = c;
+	State = INSERT;
+	windrefresh();
+}
+
+resetundo()
+{
+	Undelchars = 0;
+	*Undobuff = '\0';
+	Uncurschar = NULL;
+}
+SHAR_EOF
+fi # end of overwriting check
+if test -f 'stevie.h'
+then
+	echo shar: will not over-write existing file "'stevie.h'"
+else
+cat << \SHAR_EOF > 'stevie.h'
+/*
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
+ */
+
+/* One (and only 1) of the following 3 defines should be uncommented. */
+/* Most of the code is machine-independent.  Most of the machine- */
+/* dependent stuff is in window.c */
+
+#define ATARI		1	/* For the Atari 520 ST */
+/*#define UNIXPC	1	/* The AT&T UNIX PC (console) */
+/*#define TCAP		1	/* For termcap-based terminals */
+
+#define FILELENG 64000
+#define NORMAL 0
+#define CMDLINE 1
+#define INSERT 2
+#define APPEND 3
+#define FORWARD 4
+#define BACKWARD 5
+#define WORDSEP " \t\n()[]{},;:'\"-="
+
+#define CHANGED Changed=1
+#define UNCHANGED Changed=0
+
+#ifndef NULL
+#define NULL 0
+#endif
+
+struct charinfo {
+	char ch_size;
+	char *ch_str;
+};
+
+extern struct charinfo chars[];
+
+extern int State;
+extern int Rows;
+extern int Columns;
+extern char *Realscreen;
+extern char *Nextscreen;
+extern char *Filename;
+extern char *Filemem;
+extern char *Filemax;
+extern char *Fileend;
+extern char *Topchar;
+extern char *Botchar;
+extern char *Curschar;
+extern char *Insstart;
+extern int Cursrow, Curscol, Cursvcol;
+extern int Prenum;
+extern int Debug;
+extern int Changed;
+extern int Binary;
+extern char Redobuff[], Undobuff[], Insbuff[];
+extern char *Uncurschar, *Insptr;
+extern int Ninsert, Undelchars;
+
+char *malloc(), *strchr(), *strsave(), *alloc(), *strcpy();
+
+char *nextline(), *prevline(), *coladvance(), *ssearch();
+char *fwdsearch(), *bcksearch();
+SHAR_EOF
+fi # end of overwriting check
+if test -f 'window.c'
+then
+	echo shar: will not over-write existing file "'window.c'"
+else
+cat << \SHAR_EOF > 'window.c'
+/*
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
+ */
+
+#include "stevie.h"
+#include <stdio.h>
+
+#ifdef ATARI
+#include <osbind.h>
+#define EscSeq(x) Cconout('\033');Cconout(x);
+#endif
+#ifdef UNIXPC
+#include <sys/window.h>
+#endif
+#ifdef TCAP
+#include <curses.h>
+#endif
+
+windinit()
+{
+#ifdef ATARI
+	Columns=80;
+	Rows=25;
+	Cursconf(1,NULL);
+#endif
+#ifdef UNIXPC
+        struct uwdata uw;
+        
+	winit();
+	if ( ioctl(0,WIOCGETD,&uw) == -1
+	  && ioctl(1,WIOCGETD,&uw) == -1
+	  && ioctl(2,WIOCGETD,&uw) == -1 ) {
+		fprintf(stderr,"*** ERROR *** Not a window!\n");
+		windexit(1);
+	}
+	Columns = uw.uw_width / uw.uw_hs;
+	Rows = uw.uw_height / uw.uw_vs;
+	cbreak();
+	nonl();
+	noecho();
+#endif
+#ifdef TCAP
+	char *getenv();
+	char *p = getenv("TERM");
+
+	initscr();
+	Columns = 80;
+	if ( strncmp(p,"vt52",4)==0 )
+		Rows = 25;
+	else
+		Rows = 24;
+	cbreak();
+	nonl();
+	noecho();
+#endif
+}
+
+windgoto(r,c)
+int r,c;
+{
+#ifdef UNIXPC
+	printf("\033[%d;%dH",r+1,c+1);
+#endif
+#ifdef ATARI
+	EscSeq('Y');
+	Cconout(r+040);
+	Cconout(c+040);
+#endif
+#ifdef TCAP
+	move(r,c);
+#endif
+}
+
+windexit(r)
+int r;
+{
+#ifdef UNIXPC
+	nocbreak();
+	nl();
+	echo();
+	wexit();
+#endif
+#ifdef TCAP
+	nocbreak();
+	nl();
+	echo();
+	endwin();
+#endif
+	exit(r);
+}
+
+windclear()
+{
+#ifdef UNIXPC
+	printf("\033[H\033[J");
+#endif
+#ifdef ATARI
+	Cconws("\033H\033J");
+#endif
+#ifdef TCAP
+	clear();
+	refresh();
+#endif
+}
+
+windgetc()
+{
+#ifdef ATARI
+	return(Cnecin());
+#else
+	return(getchar());
+#endif
+}
+
+windstr(s)
+char *s;
+{
+#ifdef ATARI
+	Cconws(s);
+#endif
+#ifdef UNIXPC
+	printf("%s",s);
+#endif
+#ifdef TCAP
+	addstr(s);
+	refresh();
+#endif
+}
+
+windputc(c)
+int c;
+{
+#ifdef ATARI
+	Cconout(c);
+#endif
+#ifdef UNIXPC
+	putchar(c);
+#endif
+#ifdef TCAP
+	addch(c);
+#endif
+}
+
+windrefresh()
+{
+#ifdef TCAP
+	refresh();
+#endif
+}
+
+beep()
+{
+#ifdef ATARI
+	Cconout('\007');
+#else
+	putchar('\007');
+#endif
+}
+SHAR_EOF
+fi # end of overwriting check
+#	End of shell archive
+exit 0

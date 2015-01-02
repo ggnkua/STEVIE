@@ -1,0 +1,1847 @@
+#! /bin/sh
+# This is a shell archive.  Remove anything before this line, then unpack
+# it by saving it into a file and typing "sh file".  To overwrite existing
+# files, type "sh file -c".  You can also feed this as standard input via
+# unshar, or by typing "sh <file", e.g..  If this archive is complete, you
+# will see the following message at the end:
+#		"End of archive 3 (of 4)."
+# Contents:  screen.c search.c stevie.doc
+# Wrapped by rsalz@fig.bbn.com on Sun Jun  5 11:45:46 1988
+PATH=/bin:/usr/bin:/usr/ucb ; export PATH
+if test -f 'screen.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'screen.c'\"
+else
+echo shar: Extracting \"'screen.c'\" \(13160 characters\)
+sed "s/^X//" >'screen.c' <<'END_OF_FILE'
+X/*
+X * Routines to manipulate the screen representations.
+X *
+X * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+X *
+X */
+X
+X#include "stevie.h"
+X
+X/*
+X * The following variable is set (in filetonext) to the number of physical
+X * lines taken by the line the cursor is on. We use this to avoid extra
+X * calls to plines(). The optimized routines lfiletonext() and lnexttoscreen()
+X * make sure that the size of the cursor line hasn't changed. If so, lines
+X * below the cursor will move up or down and we need to call the routines
+X * filetonext() and nexttoscreen() to examine the entire screen.
+X */
+static	int	Cline_size;	/* size (in rows) of the cursor line */
+static	int	Cline_row;	/* starting row of the cursor line */
+X
+X/*
+X * filetonext()
+X *
+X * Based on the current value of Topchar, transfer a screenfull of
+X * stuff from Filemem to Nextscreen, and update Botchar.
+X */
+X
+static void
+filetonext()
+X{
+X	register int row, col;
+X	register char *screenp = Nextscreen;
+X	LPTR memp;
+X	LPTR save;			/* save pos. in case line won't fit */
+X	register char *endscreen;
+X	register char *nextrow;
+X	char extra[16];
+X	int nextra = 0;
+X	register int c;
+X	int n;
+X	int done;
+X	int srow;		/* starting row of the current line */
+X
+X	save = memp = *Topchar;
+X
+X	/* The number of rows shown is Rows-1. */
+X	/* The last line is the status/command line. */
+X	endscreen = &screenp[(Rows-1)*Columns];
+X
+X	srow = done = row = col = 0;
+X	while ( screenp < endscreen && !done) {
+X
+X		/* Get the next character to put on the screen. */
+X
+X		/* The 'extra' array contains the extra stuff that is */
+X		/* inserted to represent special characters (tabs, and */
+X		/* other non-printable stuff.  The order in the 'extra' */
+X		/* array is reversed. */
+X
+X		if ( nextra > 0 )
+X			c = extra[--nextra];
+X		else {
+X			c = (unsigned)(0xff & gchar(&memp));
+X			if (inc(&memp) == -1)
+X				done = 1;
+X			/* when getting a character from the file, we */
+X			/* may have to turn it into something else on */
+X			/* the way to putting it into 'Nextscreen'. */
+X			if ( c == TAB && !P(P_LS) ) {
+X				strcpy(extra,"        ");
+X				/* tab amount depends on current column */
+X				nextra = ((P(P_TS)-1) - col%P(P_TS));
+X				c = ' ';
+X			}
+X			else if ( c == NUL && P(P_LS) ) {
+X				extra[0] = NUL;
+X				nextra = 1;
+X				c = '$';
+X			} else if ( (n = chars[c].ch_size) > 1 ) {
+X				char *p;
+X				nextra = 0;
+X				p = chars[c].ch_str;
+X				/* copy 'ch-str'ing into 'extra' in reverse */
+X				while ( n > 1 )
+X					extra[nextra++] = p[--n];
+X				c = p[0];
+X			}
+X		}
+X
+X		if ( c == NUL ) {
+X			srow = ++row;
+X			/*
+X			 * Save this position in case the next line won't
+X			 * fit on the screen completely.
+X			 */
+X			save = memp;
+X			/* get pointer to start of next row */
+X			nextrow = &Nextscreen[row*Columns];
+X			/* blank out the rest of this row */
+X			while ( screenp != nextrow )
+X				*screenp++ = ' ';
+X			col = 0;
+X			continue;
+X		}
+X		if ( col >= Columns ) {
+X			row++;
+X			col = 0;
+X		}
+X		/* store the character in Nextscreen */
+X		*screenp++ = c;
+X		col++;
+X	}
+X	/*
+X	 * If we didn't hit the end of the file, and we didn't finish
+X	 * the last line we were working on, then the line didn't fit.
+X	 */
+X	if (!done && c != NUL) {
+X		/*
+X		 * Clear the rest of the screen and mark the unused lines.
+X		 */
+X		screenp = &Nextscreen[srow * Columns];
+X		while (screenp < endscreen)
+X			*screenp++ = ' ';
+X		for (; srow < (Rows-1) ;srow++)
+X			Nextscreen[srow * Columns] = '@';
+X		*Botchar = save;
+X		return;
+X	}
+X	/* make sure the rest of the screen is blank */
+X	while ( screenp < endscreen )
+X		*screenp++ = ' ';
+X	/* put '~'s on rows that aren't part of the file. */
+X	if ( col != 0 )
+X		row++;
+X	while ( row < Rows ) {
+X		Nextscreen[row*Columns] = '~';
+X		row++;
+X	}
+X	if (done)	/* we hit the end of the file */
+X		*Botchar = *Fileend;
+X	else
+X		*Botchar = memp;
+X}
+X
+X/*
+X * nexttoscreen
+X *
+X * Transfer the contents of Nextscreen to the screen, using Realscreen
+X * to avoid unnecessary output.
+X */
+static void
+nexttoscreen()
+X{
+X	register char *np = Nextscreen;
+X	register char *rp = Realscreen;
+X	register char *endscreen;
+X	register int row = 0, col = 0;
+X	int gorow = -1, gocol = -1;
+X
+X	endscreen = &np[(Rows-1)*Columns];
+X
+X	outstr(T_CI);		/* disable cursor */
+X
+X	for ( ; np < endscreen ; np++,rp++ ) {
+X		/* If desired screen (contents of Nextscreen) does not */
+X		/* match what's really there, put it there. */
+X		if ( *np != *rp ) {
+X			/* if we are positioned at the right place, */
+X			/* we don't have to use windgoto(). */
+X			if (gocol != col || gorow != row) {
+X				/*
+X				 * If we're just off by one, don't send
+X				 * an entire esc. seq. (this happens a lot!)
+X				 */
+X				if (gorow == row && gocol+1 == col) {
+X					outchar(*(np-1));
+X					gocol++;
+X				} else
+X					windgoto(gorow=row,gocol=col);
+X			}
+X			outchar(*rp = *np);
+X			gocol++;
+X		}
+X		if ( ++col >= Columns ) {
+X			col = 0;
+X			row++;
+X		}
+X	}
+X	outstr(T_CV);		/* enable cursor again */
+X}
+X
+X/*
+X * lfiletonext() - like filetonext() but only for cursor line
+X *
+X * Returns true if the size of the cursor line (in rows) hasn't changed.
+X * This determines whether or not we need to call filetonext() to examine
+X * the entire screen for changes.
+X */
+static bool_t
+lfiletonext()
+X{
+X	register int row, col;
+X	register char *screenp;
+X	LPTR memp;
+X	register char *nextrow;
+X	char extra[16];
+X	int nextra = 0;
+X	register int c;
+X	int n;
+X	bool_t eof;
+X
+X	screenp = Nextscreen + (Cline_row * Columns);
+X
+X	memp = *Curschar;
+X	memp.index = 0;
+X
+X	eof = FALSE;
+X	col = 0;
+X	row = Cline_row;
+X
+X	while (!eof) {
+X
+X		/* Get the next character to put on the screen. */
+X
+X		/* The 'extra' array contains the extra stuff that is */
+X		/* inserted to represent special characters (tabs, and */
+X		/* other non-printable stuff.  The order in the 'extra' */
+X		/* array is reversed. */
+X
+X		if ( nextra > 0 )
+X			c = extra[--nextra];
+X		else {
+X			c = (unsigned)(0xff & gchar(&memp));
+X			if (inc(&memp) == -1)
+X				eof = TRUE;
+X			/* when getting a character from the file, we */
+X			/* may have to turn it into something else on */
+X			/* the way to putting it into 'Nextscreen'. */
+X			if ( c == TAB && !P(P_LS) ) {
+X				strcpy(extra,"        ");
+X				/* tab amount depends on current column */
+X				nextra = ((P(P_TS)-1) - col%P(P_TS));
+X				c = ' ';
+X			} else if ( c == NUL && P(P_LS) ) {
+X				extra[0] = NUL;
+X				nextra = 1;
+X				c = '$';
+X			} else if ( c != NUL && (n=chars[c].ch_size) > 1 ) {
+X				char *p;
+X				nextra = 0;
+X				p = chars[c].ch_str;
+X				/* copy 'ch-str'ing into 'extra' in reverse */
+X				while ( n > 1 )
+X					extra[nextra++] = p[--n];
+X				c = p[0];
+X			}
+X		}
+X
+X		if ( c == NUL ) {
+X			row++;
+X			/* get pointer to start of next row */
+X			nextrow = &Nextscreen[row*Columns];
+X			/* blank out the rest of this row */
+X			while ( screenp != nextrow )
+X				*screenp++ = ' ';
+X			col = 0;
+X			break;
+X		}
+X
+X		if ( col >= Columns ) {
+X			row++;
+X			col = 0;
+X		}
+X		/* store the character in Nextscreen */
+X		*screenp++ = c;
+X		col++;
+X	}
+X	return ((row - Cline_row) == Cline_size);
+X}
+X
+X/*
+X * lnexttoscreen
+X *
+X * Like nexttoscreen() but only for the cursor line.
+X */
+static void
+lnexttoscreen()
+X{
+X	register char *np = Nextscreen + (Cline_row * Columns);
+X	register char *rp = Realscreen + (Cline_row * Columns);
+X	register char *endline;
+X	register int row, col;
+X	int gorow = -1, gocol = -1;
+X
+X	endline = np + (Cline_size * Columns);
+X
+X	row = Cline_row;
+X	col = 0;
+X
+X	outstr(T_CI);		/* disable cursor */
+X
+X	for ( ; np < endline ; np++,rp++ ) {
+X		/* If desired screen (contents of Nextscreen) does not */
+X		/* match what's really there, put it there. */
+X		if ( *np != *rp ) {
+X			/* if we are positioned at the right place, */
+X			/* we don't have to use windgoto(). */
+X			if (gocol != col || gorow != row) {
+X				/*
+X				 * If we're just off by one, don't send
+X				 * an entire esc. seq. (this happens a lot!)
+X				 */
+X				if (gorow == row && gocol+1 == col) {
+X					outchar(*(np-1));
+X					gocol++;
+X				} else
+X					windgoto(gorow=row,gocol=col);
+X			}
+X			outchar(*rp = *np);
+X			gocol++;
+X		}
+X		if ( ++col >= Columns ) {
+X			col = 0;
+X			row++;
+X		}
+X	}
+X	outstr(T_CV);		/* enable cursor again */
+X}
+X
+X/*
+X * updateline() - update the line the cursor is on
+X *
+X * Updateline() is called after changes that only affect the line that
+X * the cursor is on. This improves performance tremendously for normal
+X * insert mode operation. The only thing we have to watch for is when
+X * the cursor line grows or shrinks around a row boundary. This means
+X * we have to repaint other parts of the screen appropriately. If
+X * lfiletonext() returns FALSE, the size of the cursor line (in rows)
+X * has changed and we have to call updatescreen() to do a complete job.
+X */
+void
+updateline()
+X{
+X	if (!lfiletonext())
+X		updatescreen();		/* bag it, do the whole screen */
+X	else
+X		lnexttoscreen();
+X}
+X
+void
+updatescreen()
+X{
+X	filetonext();
+X	nexttoscreen();
+X}
+X
+void
+screenclear()
+X{
+X	register char	*rp, *np;
+X	register char	*end;
+X
+X	outstr(T_ED);		/* clear the display */
+X
+X	rp  = Realscreen;
+X	end = Realscreen + Rows * Columns;
+X	np  = Nextscreen;
+X
+X	/* blank out the stored screens */
+X	while (rp != end)
+X		*rp++ = *np++ = ' ';
+X}
+X
+void
+cursupdate()
+X{
+X	LPTR *p;
+X	int inc, c, nlines;
+X	int i;
+X	int didinc;
+X
+X	if (bufempty()) {		/* special case - file is empty */
+X		*Topchar  = *Filemem;
+X		*Curschar = *Filemem;
+X	} else if ( LINEOF(Curschar) < LINEOF(Topchar) ) {
+X		nlines = cntllines(Curschar,Topchar);
+X		/* if the cursor is above the top of */
+X		/* the screen, put it at the top of the screen.. */
+X		*Topchar = *Curschar;
+X		Topchar->index = 0;
+X		/* ... and, if we weren't very close to begin with, */
+X		/* we scroll so that the line is close to the middle. */
+X		if ( nlines > Rows/3 ) {
+X			for (i=0, p = Topchar; i < Rows/3 ;i++, *Topchar = *p)
+X				if ((p = prevline(p)) == NULL)
+X					break;
+X		} else
+X			s_ins(0, nlines-1);
+X		updatescreen();
+X	}
+X	else if (LINEOF(Curschar) >= LINEOF(Botchar)) {
+X		nlines = cntllines(Botchar,Curschar);
+X		/* If the cursor is off the bottom of the screen, */
+X		/* put it at the top of the screen.. */
+X		/* ... and back up */
+X		if ( nlines > Rows/3 ) {
+X			p = Curschar;
+X			for (i=0; i < (2*Rows)/3 ;i++)
+X				if ((p = prevline(p)) == NULL)
+X					break;
+X			*Topchar = *p;
+X		} else {
+X			scrollup(nlines);
+X		}
+X		updatescreen();
+X	}
+X
+X	Cursrow = Curscol = Cursvcol = 0;
+X	for ( p=Topchar; p->linep != Curschar->linep ;p = nextline(p) )
+X		Cursrow += plines(p);
+X
+X	Cline_row = Cursrow;
+X	Cline_size = plines(p);
+X
+X	for (i=0; i <= Curschar->index ;i++) {
+X		c = Curschar->linep->s[i];
+X		/* A tab gets expanded, depending on the current column */
+X		if ( c == TAB && !P(P_LS) )
+X			inc = P(P_TS) - (Curscol % P(P_TS));
+X		else
+X			inc = chars[(unsigned)(c & 0xff)].ch_size;
+X		Curscol += inc;
+X		Cursvcol += inc;
+X		if ( Curscol >= Columns ) {
+X			Curscol -= Columns;
+X			Cursrow++;
+X			didinc = TRUE;
+X		}
+X		else
+X			didinc = FALSE;
+X	}
+X	if (didinc)
+X		Cursrow--;
+X
+X	if (c == TAB && State == NORMAL && !P(P_LS)) {
+X		Curscol--;
+X		Cursvcol--;
+X	} else {
+X		Curscol -= inc;
+X		Cursvcol -= inc;
+X	}
+X	if (Curscol < 0)
+X		Curscol += Columns;
+X
+X	if (set_want_col) {
+X		Curswant = Cursvcol;
+X		set_want_col = FALSE;
+X	}
+X}
+X
+X/*
+X * The rest of the routines in this file perform screen manipulations.
+X * The given operation is performed physically on the screen. The
+X * corresponding change is also made to the internal screen image.
+X * In this way, the editor anticipates the effect of editing changes
+X * on the appearance of the screen. That way, when we call screenupdate
+X * a complete redraw isn't usually necessary. Another advantage is that
+X * we can keep adding code to anticipate screen changes, and in the
+X * meantime, everything still works.
+X */
+X
+X/*
+X * s_ins(row, nlines) - insert 'nlines' lines at 'row'
+X */
+void
+s_ins(row, nlines)
+int	row;
+int	nlines;
+X{
+X	register char	*s, *d;		/* src & dest for block copy */
+X	register char	*e;		/* end point for copy */
+X	register int	i;
+X
+X	if (T_IL[0] == NUL)		/* can't do it */
+X		return;
+X
+X	/*
+X	 * It "looks" better if we do all the inserts at once
+X	 */
+X	outstr(T_SC);			/* save position */
+X
+X	for (i=0; i < nlines ;i++) {
+X		windgoto(row, 0);
+X		outstr(T_IL);
+X	}
+X
+X	windgoto(Rows-1, 0);	/* delete any garbage that may have */
+X	outstr(T_EL);		/* been shifted to the bottom line */
+X	outstr(T_RC);		/* restore the cursor position */
+X
+X	/*
+X	 * Now do a block move to update the internal screen image
+X	 */
+X	d = Realscreen + (Columns * (Rows - 1)) - 1;
+X	s = d - (Columns * nlines);
+X	e = Realscreen + (Columns * row);
+X
+X	while (s >= e)
+X		*d-- = *s--;
+X
+X	/*
+X	 * Clear the inserted lines
+X	 */
+X	s = Realscreen + (row * Columns);
+X	e = s + (nlines * Columns);
+X	while (s < e)
+X		*s++ = ' ';
+X}
+X
+X/*
+X * s_del(row, nlines) - delete 'nlines' lines at 'row'
+X */
+void
+s_del(row, nlines)
+int	row;
+int	nlines;
+X{
+X	register char	*s, *d, *e;
+X	register int	i;
+X
+X	if (T_DL[0] == NUL)			/* can't do it */
+X		return;
+X
+X	/* delete the lines */
+X	outstr(T_SC);				/* save position */
+X	for (i=0; i < nlines ;i++) {
+X		windgoto(row, 0);
+X		outstr(T_DL);			/* delete a line */
+X		if (i == 0) {
+X			windgoto(Rows-2, 0);	/* delete any garbage that */
+X			outstr(T_EL);		/* was on the status line */
+X		}
+X	}
+X	outstr(T_RC);				/* restore position */
+X
+X	/*
+X	 * do a block move to update the internal image
+X	 */
+X	d = Realscreen + (row * Columns);
+X	s = d + (nlines * Columns);
+X	e = Realscreen + ((Rows - 1) * Columns);
+X
+X	while (s < e)
+X		*d++ = *s++;
+X
+X	while (d < e)		/* clear the lines at the bottom */
+X		*d++ = ' ';
+X}
+END_OF_FILE
+if test 13160 -ne `wc -c <'screen.c'`; then
+    echo shar: \"'screen.c'\" unpacked with wrong size!
+fi
+# end of 'screen.c'
+fi
+if test -f 'search.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'search.c'\"
+else
+echo shar: Extracting \"'search.c'\" \(13221 characters\)
+sed "s/^X//" >'search.c' <<'END_OF_FILE'
+X/*
+X * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
+X *
+X * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+X *
+X */
+X
+X#include "stevie.h"
+X
+X#include <regexp.h>	/* Henry Spencer's regular expression routines */
+X
+X#ifdef	MEGAMAX
+overlay "search"
+X#endif
+X
+X/*
+X * This file contains various searching-related routines. These fall into
+X * three groups: string searches (for /, ?, n, and N), character searches
+X * within a single line (for f, F, t, T, etc), and "other" kinds of searches
+X * like the '%' command, and 'word' searches.
+X */
+X
+X/*
+X * String searches
+X *
+X * The actual searches are done using Henry Spencer's regular expression
+X * library.
+X */
+X
+X#define	BEGWORD	"([^a-zA-Z0-9_]|^)"	/* replaces "\<" in search strings */
+X#define	ENDWORD	"([^a-zA-Z0-9_]|$)"	/* likewise replaces "\>" */
+X
+bool_t	begword;	/* does the search include a 'begin word' match */
+X
+X/*
+X * mapstring(s) - map special backslash sequences
+X */
+static char *
+mapstring(s)
+register char	*s;
+X{
+X	static	char	ns[80];
+X	char	*p;
+X
+X	begword = FALSE;
+X
+X	for (p = ns; *s ;s++) {
+X		if (*s != '\\') {	/* not an escape */
+X			*p++ = *s;
+X			continue;
+X		}
+X		switch (*++s) {
+X		case '/':
+X			*p++ = '/';
+X			break;
+X
+X		case '<':
+X			strcpy(p, BEGWORD);
+X			p += strlen(BEGWORD);
+X			begword = TRUE;
+X			break;
+X
+X		case '>':
+X			strcpy(p, ENDWORD);
+X			p += strlen(ENDWORD);
+X			break;
+X
+X		default:
+X			*p++ = '\\';
+X			*p++ = *s;
+X			break;
+X		}
+X	}
+X	*p++ = NUL;
+X
+X	return ns;
+X}
+X
+static char *laststr = NULL;
+static int lastsdir;
+X
+static LPTR *
+ssearch(dir,str)
+int	dir;	/* FORWARD or BACKWARD */
+char	*str;
+X{
+X	static LPTR *bcksearch(), *fwdsearch();
+X	LPTR	*pos;
+X
+X	if ( laststr != NULL )
+X		free(laststr);
+X	laststr = strsave(str);
+X	lastsdir = dir;
+X	if ( dir == BACKWARD )
+X		pos = bcksearch(mapstring(str));
+X	else
+X		pos = fwdsearch(mapstring(str));
+X
+X	/*
+X	 * This is kind of a kludge, but its needed to make
+X	 * 'beginning of word' searches land on the right place.
+X	 */
+X	if (begword) {
+X		if (pos->index != 0)
+X			pos->index += 1;
+X	}
+X	return pos;
+X}
+X
+void
+dosearch(dir,str)
+int dir;
+char *str;
+X{
+X	LPTR *p;
+X
+X	if ((p = ssearch(dir,str)) == NULL)
+X		msg("Pattern not found");
+X	else {
+X		LPTR savep;
+X
+X		cursupdate();
+X		/* if we're backing up, we make sure the line we're on */
+X		/* is on the screen. */
+X		setpcmark();
+X		*Curschar = savep = *p;
+X		cursupdate();
+X	}
+X}
+X
+X#define	OTHERDIR(x)	(((x) == FORWARD) ? BACKWARD : FORWARD)
+X
+void
+repsearch(flag)
+int	flag;
+X{
+X	int	dir = lastsdir;
+X
+X	if ( laststr == NULL )
+X		beep();
+X	else
+X		dosearch(flag ? OTHERDIR(lastsdir) : lastsdir, laststr);
+X
+X	lastsdir = dir;
+X}
+X
+X/*
+X * regerror - called by regexp routines when errors are detected.
+X */
+void
+regerror(s)
+char	*s;
+X{
+X	emsg(s);
+X}
+X
+static LPTR *
+fwdsearch(str)
+register char *str;
+X{
+X	static LPTR infile;
+X	register LPTR *p;
+X	regexp *prog;
+X	bool_t	want_start = (*str == '^');	/* looking for start of line? */
+X
+X	register char *s;
+X	register int i;
+X
+X	if ((prog = regcomp(str)) == NULL) {
+X		emsg("Invalid search string");
+X		return NULL;
+X	}
+X
+X	p = Curschar;
+X	i = Curschar->index + 1;
+X	do {
+X		s = p->linep->s + i;
+X		i = 0;
+X
+X		if (regexec(prog, s)) {		/* got a match */
+X			/*
+X			 * If we wanted the start of a line and we aren't
+X			 * really there, then a match doesn't count.
+X			 */
+X			if (want_start && (s != p->linep->s))
+X				continue;
+X
+X			infile.linep = p->linep;
+X			infile.index = (int) (prog->startp[0] - p->linep->s);
+X			free(prog);
+X			return (&infile);
+X		}
+X	} while ((p = nextline(p)) != NULL);
+X
+X	/*
+X	 * If wrapscan isn't set, then don't scan from the beginning
+X	 * of the file. Just return failure here.
+X	 */
+X	if (!P(P_WS)) {
+X		free(prog);
+X		return NULL;
+X	}
+X
+X	/* search from the beginning of the file to Curschar */
+X	for (p = Filemem; p != NULL ;p = nextline(p)) {
+X		s = p->linep->s;
+X
+X		if (regexec(prog, s)) {		/* got a match */
+X			infile.linep = p->linep;
+X			infile.index = (int) (prog->startp[0] - s);
+X			free(prog);
+X			return (&infile);
+X		}
+X
+X		if (p->linep == Curschar->linep)
+X			break;
+X	}
+X
+X	free(prog);
+X	return(NULL);
+X}
+X
+static LPTR *
+bcksearch(str)
+char *str;
+X{
+X	static LPTR infile;
+X	register LPTR *p;
+X	regexp	*prog;
+X	register char *s;
+X	register int i;
+X	bool_t	want_start = (*str == '^');	/* looking for start of line? */
+X	register char	*match;
+X
+X	/* make sure str isn't empty */
+X	if (str == NULL || *str == NUL)
+X		return NULL;
+X
+X	if ((prog = regcomp(str)) == NULL) {
+X		emsg("Invalid search string");
+X		return NULL;
+X	}
+X
+X	p = Curschar;
+X	dec(p);
+X
+X	if (begword)		/* so we don't get stuck on one match */
+X		dec(p);
+X
+X	i = (want_start) ? 0 : p->index;
+X
+X	do {
+X		s = p->linep->s;
+X
+X		if (regexec(prog, s)) {		/* match somewhere on line */
+X
+X			if (want_start) {	/* could only have been one */
+X				infile.linep = p->linep;
+X				infile.index = (int) (prog->startp[0] - s);
+X				free(prog);
+X				return (&infile);
+X			}
+X
+X			/*
+X			 * Now, if there are multiple matches on this line,
+X			 * we have to get the last one. Or the last one
+X			 * before the cursor, if we're on that line.
+X			 */
+X
+X			match = prog->startp[0];
+X
+X			while (regexec(prog, prog->endp[0])) {
+X				if ((i >= 0) && ((prog->startp[0] - s) > i))
+X					break;
+X				match = prog->startp[0];
+X			}
+X
+X			if ((i >= 0) && ((match - s) > i)) {
+X				i = -1;
+X				continue;
+X			}
+X
+X			infile.linep = p->linep;
+X			infile.index = (int) (match - s);
+X			free(prog);
+X			return (&infile);
+X		}
+X		i = -1;
+X
+X	} while ((p = prevline(p)) != NULL);
+X
+X	/*
+X	 * If wrapscan isn't set, bag the search now
+X	 */
+X	if (!P(P_WS)) {
+X		free(prog);
+X		return NULL;
+X	}
+X
+X	/* search backward from the end of the file */
+X	p = prevline(Fileend);
+X	do {
+X		s = p->linep->s;
+X
+X		if (regexec(prog, s)) {		/* match somewhere on line */
+X
+X			if (want_start) {	/* could only have been one */
+X				infile.linep = p->linep;
+X				infile.index = (int) (prog->startp[0] - s);
+X				free(prog);
+X				return (&infile);
+X			}
+X
+X			/*
+X			 * Now, if there are multiple matches on this line,
+X			 * we have to get the last one.
+X			 */
+X
+X			match = prog->startp[0];
+X
+X			while (regexec(prog, prog->endp[0]))
+X				match = prog->startp[0];
+X
+X			infile.linep = p->linep;
+X			infile.index = (int) (match - s);
+X			free(prog);
+X			return (&infile);
+X		}
+X
+X		if (p->linep == Curschar->linep)
+X			break;
+X
+X	} while ((p = prevline(p)) != NULL);
+X
+X	free(prog);
+X	return NULL;
+X}
+X
+X/*
+X * Character Searches
+X */
+X
+static char lastc = NUL;	/* last character searched for */
+static int  lastcdir;		/* last direction of character search */
+static int  lastctype;		/* last type of search ("find" or "to") */
+X
+X/*
+X * searchc(c, dir, type)
+X *
+X * Search for character 'c', in direction 'dir'. If type is 0, move to
+X * the position of the character, otherwise move to just before the char.
+X */
+bool_t
+searchc(c, dir, type)
+char	c;
+int	dir;
+int	type;
+X{
+X	LPTR	save;
+X
+X	save = *Curschar;	/* save position in case we fail */
+X	lastc = c;
+X	lastcdir = dir;
+X	lastctype = type;
+X
+X	/*
+X	 * On 'to' searches, skip one to start with so we can repeat
+X	 * searches in the same direction and have it work right.
+X	 */
+X	if (type)
+X		(dir == FORWARD) ? oneright() : oneleft();
+X
+X	while ( (dir == FORWARD) ? oneright() : oneleft() ) {
+X		if (gchar(Curschar) == c) {
+X			if (type)
+X				(dir == FORWARD) ? oneleft() : oneright();
+X			return TRUE;
+X		}
+X	}
+X	*Curschar = save;
+X	return FALSE;
+X}
+X
+bool_t
+crepsearch(flag)
+int	flag;
+X{
+X	int	dir = lastcdir;
+X	int	rval;
+X
+X	if (lastc == NUL)
+X		return FALSE;
+X
+X	rval = searchc(lastc, flag ? OTHERDIR(lastcdir) : lastcdir, lastctype);
+X
+X	lastcdir = dir;		/* restore dir., since it may have changed */
+X
+X	return rval;
+X}
+X
+X/*
+X * "Other" Searches
+X */
+X
+X/*
+X * showmatch - move the cursor to the matching paren or brace
+X */
+LPTR *
+showmatch()
+X{
+X	static	LPTR	pos;
+X	int	(*move)(), inc(), dec();
+X	char	initc = gchar(Curschar);	/* initial char */
+X	char	findc;				/* terminating char */
+X	char	c;
+X	int	count = 0;
+X
+X	pos = *Curschar;		/* set starting point */
+X
+X	switch (initc) {
+X
+X	case '(':
+X		findc = ')';
+X		move = inc;
+X		break;
+X	case ')':
+X		findc = '(';
+X		move = dec;
+X		break;
+X	case '{':
+X		findc = '}';
+X		move = inc;
+X		break;
+X	case '}':
+X		findc = '{';
+X		move = dec;
+X		break;
+X	case '[':
+X		findc = ']';
+X		move = inc;
+X		break;
+X	case ']':
+X		findc = '[';
+X		move = dec;
+X		break;
+X	default:
+X		return (LPTR *) NULL;
+X	}
+X
+X	while ((*move)(&pos) != -1) {		/* until end of file */
+X		c = gchar(&pos);
+X		if (c == initc)
+X			count++;
+X		else if (c == findc) {
+X			if (count == 0)
+X				return &pos;
+X			count--;
+X		}
+X	}
+X	return (LPTR *) NULL;			/* never found it */
+X}
+X
+X/*
+X * findfunc(dir) - Find the next function in direction 'dir'
+X *
+X * Return TRUE if a function was found.
+X */
+bool_t
+findfunc(dir)
+int	dir;
+X{
+X	LPTR	*curr;
+X
+X	curr = Curschar;
+X
+X	do {
+X		curr = (dir == FORWARD) ? nextline(curr) : prevline(curr);
+X
+X		if (curr != NULL && curr->linep->s[0] == '{') {
+X			setpcmark();
+X			*Curschar = *curr;
+X			return TRUE;
+X		}
+X	} while (curr != NULL);
+X
+X	return FALSE;
+X}
+X
+X/*
+X * The following routines do the word searches performed by the
+X * 'w', 'W', 'b', 'B', 'e', and 'E' commands.
+X */
+X
+X/*
+X * To perform these searches, characters are placed into one of three
+X * classes, and transitions between classes determine word boundaries.
+X *
+X * The classes are:
+X *
+X * 0 - white space
+X * 1 - letters, digits, and underscore
+X * 2 - everything else
+X */
+X
+static	int	stype;		/* type of the word motion being performed */
+X
+X#define	C0(c)	(((c) == ' ') || ((c) == '\t') || ((c) == NUL))
+X#define	C1(c)	(isalpha(c) || isdigit(c) || ((c) == '_'))
+X
+X/*
+X * cls(c) - returns the class of character 'c'
+X *
+X * The 'type' of the current search modifies the classes of characters
+X * if a 'W', 'B', or 'E' motion is being done. In this case, chars. from
+X * class 2 are reported as class 1 since only white space boundaries are
+X * of interest.
+X */
+static	int
+cls(c)
+char	c;
+X{
+X	if (C0(c))
+X		return 0;
+X
+X	if (C1(c))
+X		return 1;
+X
+X	/*
+X	 * If stype is non-zero, report these as class 1.
+X	 */
+X	return (stype == 0) ? 2 : 1;
+X}
+X
+X
+X/*
+X * fwd_word(pos, type) - move forward one word
+X *
+X * Returns the resulting position, or NULL if EOF was reached.
+X */
+LPTR *
+fwd_word(p, type)
+LPTR	*p;
+int	type;
+X{
+X	static	LPTR	pos;
+X	int	sclass = cls(gchar(p));		/* starting class */
+X
+X	pos = *p;
+X
+X	stype = type;
+X
+X	/*
+X	 * We always move at least one character.
+X	 */
+X	if (inc(&pos) == -1)
+X		return NULL;
+X
+X	if (sclass != 0) {
+X		while (cls(gchar(&pos)) == sclass) {
+X			if (inc(&pos) == -1)
+X				return NULL;
+X		}
+X		/*
+X		 * If we went from 1 -> 2 or 2 -> 1, return here.
+X		 */
+X		if (cls(gchar(&pos)) != 0)
+X			return &pos;
+X	}
+X
+X	/* We're in white space; go to next non-white */
+X
+X	while (cls(gchar(&pos)) == 0) {
+X		/*
+X		 * We'll stop if we land on a blank line
+X		 */
+X		if (pos.index == 0 && pos.linep->s[0] == NUL)
+X			break;
+X
+X		if (inc(&pos) == -1)
+X			return NULL;
+X	}
+X
+X	return &pos;
+X}
+X
+X/*
+X * bck_word(pos, type) - move backward one word
+X *
+X * Returns the resulting position, or NULL if EOF was reached.
+X */
+LPTR *
+bck_word(p, type)
+LPTR	*p;
+int	type;
+X{
+X	static	LPTR	pos;
+X	int	sclass = cls(gchar(p));		/* starting class */
+X
+X	pos = *p;
+X
+X	stype = type;
+X
+X	if (dec(&pos) == -1)
+X		return NULL;
+X
+X	/*
+X	 * If we're in the middle of a word, we just have to
+X	 * back up to the start of it.
+X	 */
+X	if (cls(gchar(&pos)) == sclass && sclass != 0) {
+X		/*
+X		 * Move backward to start of the current word
+X		 */
+X		while (cls(gchar(&pos)) == sclass) {
+X			if (dec(&pos) == -1)
+X				return NULL;
+X		}
+X		inc(&pos);			/* overshot - forward one */
+X		return &pos;
+X	}
+X
+X	/*
+X	 * We were at the start of a word. Go back to the start
+X	 * of the prior word.
+X	 */
+X
+X	while (cls(gchar(&pos)) == 0) {		/* skip any white space */
+X		/*
+X		 * We'll stop if we land on a blank line
+X		 */
+X		if (pos.index == 0 && pos.linep->s[0] == NUL)
+X			return &pos;
+X
+X		if (dec(&pos) == -1)
+X			return NULL;
+X	}
+X
+X	sclass = cls(gchar(&pos));
+X
+X	/*
+X	 * Move backward to start of this word.
+X	 */
+X	while (cls(gchar(&pos)) == sclass) {
+X		if (dec(&pos) == -1)
+X			return NULL;
+X	}
+X	inc(&pos);			/* overshot - forward one */
+X
+X	return &pos;
+X}
+X
+X/*
+X * end_word(pos, type) - move to the end of the word
+X *
+X * There is an apparent bug in the 'e' motion of the real vi. At least
+X * on the System V Release 3 version for the 80386. Unlike 'b' and 'w',
+X * the 'e' motion crosses blank lines. When the real vi crosses a blank
+X * line in an 'e' motion, the cursor is placed on the FIRST character
+X * of the next non-blank line. The 'E' command, however, works correctly.
+X * Since this appears to be a bug, I have not duplicated it here.
+X *
+X * Returns the resulting position, or NULL if EOF was reached.
+X */
+LPTR *
+end_word(p, type)
+LPTR	*p;
+int	type;
+X{
+X	static	LPTR	pos;
+X	int	sclass = cls(gchar(p));		/* starting class */
+X
+X	pos = *p;
+X
+X	stype = type;
+X
+X	if (inc(&pos) == -1)
+X		return NULL;
+X
+X	/*
+X	 * If we're in the middle of a word, we just have to
+X	 * move to the end of it.
+X	 */
+X	if (cls(gchar(&pos)) == sclass && sclass != 0) {
+X		/*
+X		 * Move forward to end of the current word
+X		 */
+X		while (cls(gchar(&pos)) == sclass) {
+X			if (inc(&pos) == -1)
+X				return NULL;
+X		}
+X		dec(&pos);			/* overshot - forward one */
+X		return &pos;
+X	}
+X
+X	/*
+X	 * We were at the end of a word. Go to the end
+X	 * of the next word.
+X	 */
+X
+X	while (cls(gchar(&pos)) == 0) {		/* skip any white space */
+X		if (inc(&pos) == -1)
+X			return NULL;
+X	}
+X
+X	sclass = cls(gchar(&pos));
+X
+X	/*
+X	 * Move forward to end of this word.
+X	 */
+X	while (cls(gchar(&pos)) == sclass) {
+X		if (inc(&pos) == -1)
+X			return NULL;
+X	}
+X	dec(&pos);			/* overshot - forward one */
+X
+X	return &pos;
+X}
+END_OF_FILE
+if test 13221 -ne `wc -c <'search.c'`; then
+    echo shar: \"'search.c'\" unpacked with wrong size!
+fi
+# end of 'search.c'
+fi
+if test -f 'stevie.doc' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'stevie.doc'\"
+else
+echo shar: Extracting \"'stevie.doc'\" \(15622 characters\)
+sed "s/^X//" >'stevie.doc' <<'END_OF_FILE'
+X
+X		     STEVIE - An Aspiring VI Clone
+X
+X			     User Reference
+X
+X			      Tony Andrews
+X
+X			 	 3/6/88
+X
+X
+Overview
+X--------
+X
+STEVIE is an editor designed to mimic the interface of the UNIX editor
+X'vi'. The name (ST Editor for VI Enthusiasts) is due to the fact that
+the editor was first written for the Atari ST. The current version has
+been ported to UNIX and OS/2, but I've left the name intact for now.
+X
+I've labelled STEVIE an 'aspiring' vi clone as a warning to those who
+may expect too much. On the whole, the editor is pretty complete. Almost
+all of the visual mode commands are supported. The biggest failing at the
+moment is that the undo command is currently in a state of disrepair.
+Recent enhancements in other areas have required the undo command to be
+mostly disabled until it can catch up with the other changes. But don't be
+discouraged. I've tried very hard to capture the 'feel' of vi by getting
+the little things right. Making lines wrap correctly, supporting true
+operators, and even getting the cursor to land on the right place for
+tabs are all a real pain, but do much to make the editor feel right.
+X
+This program is the result of many late nights of hacking over the last
+several months. The first version was written by Tim Thompson and posted
+to USENET. From there, I reworked the data structures completely, added
+LOTS of features, and generally improved the overall performance in the
+process.
+X
+STEVIE may be freely distributed. The source isn't copyrighted or
+restricted in any way. If you pass the program along, please include all
+the documentation and, if practical, the source as well. I'm not fanatical
+about this, but I tried to make STEVIE fairly portable and that doesn't
+do any good if the source isn't available.
+X
+The remainder of this document describes the operation of the editor.
+This is intended as a reference for users already familiar with the real
+vi editor.
+X
+X
+Starting the Editor
+X-------------------
+X
+The following command line forms are supported:
+X
+X	vi [file ...]		Edit the specified file(s)
+X
+X	vi -t tag		Start at location of the given tag
+X
+X	vi + file		Edit file starting at end
+X
+X	vi +n file		Edit file starting a line number 'n'
+X
+X	vi +/pat file		Edit file starting at pattern 'pat'
+X
+If multiple files are given on the command line (using the first form),
+the ":n" command goes to the next file, ":p" goes backward in the list,
+and ":rew" can be used to rewind back to the start of the file list.
+X
+X
+Set Command Options
+X-------------------
+X
+The ":set" command works as usual to set parameters. Each parameter has
+a long and an abbreviated name, either of which may be used. Boolean
+parameters are set as in:
+X
+X	set showmatch
+X
+or cleared by:
+X
+X	set noshowmatch
+X
+Numeric parameters are set as in:
+X
+X	set scroll=5
+X
+Several parameters may be set with a single command:
+X
+X	set novb sm report=1
+X
+To see the status of all parameters use ":set all". Typing ":set" with
+no arguments will show only those parameters that have been changed.
+The supported parameters, their names, defaults, and descriptions are
+shown below:
+X
+XFull Name	Short	Default		Description
+X------------------------------------------------------------------------------
+vbell		vb	vb		Use visual bell (novb for audible bell)
+showmatch	sm	nosm		Showmatch mode
+wrapscan	ws	ws		Wrapscan (searches cross file start/end)
+errorbells	eb	noeb		Ring bell when error messages are shown
+showmode	mo	nomo		Show on status line when in insert mode
+backup		bk	nobk		Leave backup in *.bak on file writes
+return		cr	cr		End lines with cr-lf when writing
+list		list	nolist		Show tabs and newlines graphically
+X
+scroll		scroll	12		Number of lines to scroll for ^D and ^U
+tabstop		ts	8		Number of spaces in a tab
+report		report	5		Min # of lines to report operations on
+lines		lines	25		Number of lines on the screen
+X
+X
+The EXINIT environment variable can be used to modify the default values
+on startup as in:
+X
+X		setenv EXINIT="set sm ts=4"
+X
+The 'backup' parameter, if set, causes the editor to retain a backup of any
+files that are written. During file writes, a backup is always kept for
+safety until the write is completed. At that point, the 'backup' parameter
+determines whether the backup file is deleted.
+X
+In environments (e.g. OS/2 or TOS) where lines are normally terminated by
+CR-LF, the 'return' parameter allows files to be written with only a LF
+terminator (if the parameter is cleared).
+X
+The 'lines' parameter tells the editor how many lines there are on the screen.
+This is useful on systems like the ST where various screen resolutions may be
+used. By using the 'lines' parameter, different screen sizes can be easily
+handled.
+X
+X
+XFile Manipulation Commands
+X--------------------------
+X
+The following table shows the supported file manipulation commands as
+well as some other 'ex' commands that aren't described elsewhere:
+X
+X:w		write the current file
+X:wq		write and quit
+X:x		write (if necessary) and quit
+ZZ		same as ":x"
+X
+X:e file		edit the named file
+X:e!		re-edit the current file, discarding any changes
+X:e #		edit the alternate file
+X
+X:w file		write the buffer to the named file
+X:x,y w file	write lines x through y to the named file
+X:r file		read the named file into the buffer
+X
+X:n		edit the next file
+X:p		edit the previous file
+X:rew		rewind the file list
+X
+X:f		show the current file name
+X:f name		change the current file name
+X
+X:ta tag		go to the named tag
+X^]		like ":ta" using the current word as the tag
+X
+X:help		display a command summary
+X
+The ":help" command can also be invoke with the <HELP> key on the Atari
+ST. This actually displays a pretty complete summary of the real vi with
+unsupported features indicated appropriately.
+X
+The commands above work pretty much like they do in 'vi'. Most of the
+commands support a '!' suffix (if appropriate) to discard any pending
+changes.
+X
+When writing just part of the buffer, the following address forms are
+supported:
+X
+X		addr [+- number]
+X
+where 'addr' may be one of the following:
+X
+X		a line number
+X		a mark (as in 'a or 'b)
+X		'.' (the current line)
+X		'$' (the last line)
+X
+X
+String Searches
+X---------------
+X
+String searches are supported, as in vi, accepting the usual regular
+expression syntax. This was done using Henry Spencer's regular expression
+library without modification. I added code outside the library to support
+the '\<' and '\>' extensions. This actually turned out to be pretty easy.
+X
+X
+Operators
+X---------
+X
+The vi operators (d, c, y, <, and >) work as true operators. The only
+exception is that the change operator works only for character-oriented
+changes (like cw or c%) and not for line-oriented changes (like cL or c3j).
+X
+X
+Tags
+X----
+X
+Tags are implemented and a fairly simple version of 'ctags' is supplied
+with the editor. The current version of ctags will find functions and
+macros following a specific (but common) form.  See 'ctags.doc' for a
+complete discussion.  [The full Ctags program is in the public domain;
+contact your nearest comp.sources.unix archive site; the primitive
+tags has been taken out of this c.s.u distribution.]
+X
+X
+System-Specific Comments
+X------------------------
+X
+The following sections provide additional relevant information for the
+systems to which STEVIE has been ported.
+X
+X
+Atari ST
+X--------
+X
+The editor has been tested in all three resolutions, although low and
+high res. are less tested than medium. The 50-line high res. mode can
+be used by setting the 'lines' parameter to 50. Alternatively, the
+environment variable 'LINES' can be set. The editor doesn't actively
+set the number of lines on the screen. It just operates using the number
+of lines it was told.
+X
+The arrow keys, as well as the <INSERT>, <HELP>, and <UNDO> keys are
+all mapped appropriately.
+X
+X
+UNIX
+X----
+X
+The editor has been ported to UNIX System V release 3. This was done
+mainly to get some profiling data so I haven't put much effort into
+doing the UNIX version right. It's hard-coded for ansi-style escape
+sequences and doesn't use the termcap/terminfo routines at all.
+X
+X
+OS/2
+X----
+X
+This port was done because the editor that comes with the OS/2 developer's
+kit really sucks. Make sure 'ansi' mode is on (using the 'ansi' command).
+The OS/2 ansi driver doesn't support insert/delete line, so the display
+updates are a little rough, but the editor is fast enough that it isn't
+too bothersome. The arrow keys are NOT mapped, so they don't currently do
+anything reasonable.
+X
+X
+Missing Features
+X----------------
+X
+X1. Counts aren't yet supported everywhere that they should be.
+X
+X2. Macros with support for the ST function keys.
+X
+X3. More "set" options.
+X
+X4. Auto-indent.
+X
+X5. Many others...
+X
+X
+X
+Known Bugs and Problems
+X-----------------------
+X
+X1. Undo is partially disabled until I can re-work some of the code for
+X   undoing certain edit operations. Undo is enabled for those operations
+X   where I've specifically checked out the code. All other cases print
+X   an apologetic message for the time being. Recent changes to the editor
+X   broke some of the old 'undo' code. This is a temporary hack until I
+X   can check out all the undo code.
+X
+X2. The change operator is only half-way implemented. It works for character
+X   motions but not line motions. This isn't so bad since most change
+X   operations are character oriented anyway.
+X
+X3. The yank buffer uses statically allocated memory, so yanks of more than
+X   1K of text will fail. If a delete spans more than 1K, the program asks
+X   for confirmation before proceeding. That way, if you were moving text,
+X   you don't get screwed by the limited yank buffer. You just have to move
+X   smaller chunks at a time. All the internal buffers (yank, redo, etc.)
+X   need to be reworked to allocate memory dynamically.
+X
+X4. If you stay in insert mode for a long time, the insert buffer can overflow.
+X   The editor will print a message and dump you back into command mode.
+X
+X5. Puts are very slow.
+X
+X6. Several other less bothersome glitches...
+X
+X
+Conclusion
+X----------
+X
+I'm still working on the program pretty actively, although the farther I
+get with it, the harder it is to get motivated to work on it. I've been
+using it as my standard editor for a long time, and I suppose I'm coming
+to accept its deficiencies more than I should. Fortunately, I use the
+real vi every day at work, so I'm constantly reminded of the work that
+remains to be done.
+X
+I'd like to thank Tim Thompson for writing the original version of the
+editor. His program was well structured and quite readable. Thanks for
+giving me a good base to work with.
+X
+If you're reading this file, but didn't get the source code for STEVIE,
+it can be had by sending a disk with return postage to the address given
+below. I can write disks for the Atari ST (SS or DS) or MSDOS (360K or
+X1.2M). Please be sure to include the return postage. I don't intend to
+make money from this program, but I don't want to lose any either.
+X
+I'm not planning to try to coordinate the various ports of STEVIE that
+may occur. I just don't have the time. But if you do port it, I'd be
+interested in hearing about it. I will be doing a port for Minix on the
+ST when that becomes available later this year. So if anyone does a
+Minix port on the PC, I'd be especially interested.
+X
+X
+Tony Andrews			UUCP: onecom!wldrdg!tony
+X5902E Gunbarrel Ave.
+Boulder, CO 80301
+X
+X
+Character Function Summary
+X--------------------------
+X
+The following list describes the meaning of each character that's used
+by the editor. In some cases characters have meaning in both command and
+insert mode; these are all described.
+X
+X^@	The null character. Not used in any mode. This character may not
+X	be present in the file, as is the case with vi.
+X
+X^B	Backward one screen.
+X
+X^D	Scroll the window down one half screen.
+X
+X^E	Scroll the screen up one line.
+X
+X^F	Forward one screen.
+X
+X^G	Same as ":f" command. Displays file information.
+X
+X^H (BS)	Moves cursor left one space in command mode. In insert mode, erases
+X	the last character typed.
+X
+X^J	Move the cursor down one line.
+X
+X^L	Clear and redraw the screen.
+X
+X^M (CR)	Move to the first non-white character in the next line. In insert
+X	mode, a carriage return opens a new line for input.
+X
+X^N	Move the cursor down a line.
+X
+X^P	Move the cursor up a line.
+X
+X^U	Scroll the window up one half screen.
+X
+X^Y	Scroll the screen down one line.
+X
+X^[	Escape cancels a pending command in command mode, and is used to
+X	terminate insert mode.
+X
+X^]	Moves to the tag whose name is given by the word in which the cursor
+X	resides.
+X
+X^`	Same as ":e #" if supported (system-dependent).
+X
+SPACE	Move the cursor right on column.
+X
+X$	Move to the end of the current line.
+X
+X%	If the cursor rests on a paren '()', brace '{}', or bracket '[]',
+X	move to the matching one.
+X
+X'	Used to move the cursor to a previously marked position, as in
+X	'a or 'b. The cursor moves to the start of the marked line. The
+X	special mark '' refers to the "previous context".
+X
+X+	Same as carriage return, in command mode.
+X
+X,	Reverse of the last t, T, f, or F command.
+X
+X-	Move to the first non-white character in the previous line.
+X
+X.	Repeat the last edit command.
+X
+X/	Start of a forward string search command. String searches may be
+X	optionally terminated with a closing slash. To search for a slash
+X	use '\/' in the search string.
+X
+X0	Move to the start of the current line. Also used within counts.
+X
+X1-9	Used to add 'count' prefixes to commands.
+X
+X:	Prefix character for "ex" commands.
+X
+X;	Repeat last t, T, f, or F command.
+X
+X<	The 'left shift' operator.
+X
+X>	The 'right shift' operator.
+X
+X?	Same as '/', but search backward.
+X
+A	Append at the end of the current line.
+X
+B	Backward one blank-delimited word.
+X
+C	Change the rest of the current line.
+X
+D	Delete the rest of the current line.
+X
+XE	End of the end of a blank-delimited word.
+X
+XF	Find a character backward on the current line.
+X
+G	Go to the given line number (end of file, by default).
+X
+H	Move to the first non-white char. on the top screen line.
+X
+I	Insert before the first non-white char. on the current line.
+X
+J	Join two lines.
+X
+L	Move to the first non-white char. on the bottom screen line.
+X
+M	Move to the first non-white char. on the middle screen line.
+X
+N	Reverse the last string search.
+X
+O	Open a new line above the current line, and start inserting.
+X
+P	Put the yank/delete buffer before the current cursor position.
+X
+T	Reverse search 'upto' the given character.
+X
+W	Move forward one blank-delimited word.
+X
+XX	Delete one character before the cursor.
+X
+Y	Yank the current line. Same as 'yy'.
+X
+ZZ	Exit from the editor, saving changes if necessary.
+X
+X[[	Move backward one C function.
+X
+X]]	Move forward one C function.
+X
+X^	Move to the first non-white on the current line.
+X
+X`	Move to the given mark, as with '. The distinction between the two
+X	commands is important when used with operators. I support the
+X	difference correctly. If you don't know what I'm talking about,
+X	don't worry, it won't matter to you.
+X
+a	Append text after the cursor.
+X
+b	Back one word.
+X
+c	The change operator.
+X
+d	The delete operator.
+X
+e	Move to the end of a word.
+X
+f	Find a character on the current line.
+X
+h	Move left one column.
+X
+i	Insert text before the cursor.
+X
+j	Move down one line.
+X
+k	Move up one line.
+X
+l	Move right one column.
+X
+m	Set a mark at the current position (e.g. ma or mb).
+X
+n	Repeat the last string search.
+X
+o	Open a new line and start inserting text.
+X
+p	Put the yank/delete buffer after the cursor.
+X
+r	Replace a character.
+X
+s	Replace characters.
+X
+t	Move forward 'upto' the given character on the current line.
+X
+u	Undo the last edit. This isn't currently supported very well.
+X
+w	Move forward one word.
+X
+x	Delete the character under the cursor.
+X
+y	The yank operator.
+X
+z	Redraw the screen with the current line at the top (zRETURN),
+X	the middle (z.), or the bottom (z-).
+X
+X|	Move to the column given by the preceding count.
+X
+END_OF_FILE
+if test 15622 -ne `wc -c <'stevie.doc'`; then
+    echo shar: \"'stevie.doc'\" unpacked with wrong size!
+fi
+# end of 'stevie.doc'
+fi
+echo shar: End of archive 3 \(of 4\).
+cp /dev/null ark3isdone
+MISSING=""
+for I in 1 2 3 4 ; do
+    if test ! -f ark${I}isdone ; then
+	MISSING="${MISSING} ${I}"
+    fi
+done
+if test "${MISSING}" = "" ; then
+    echo You have unpacked all 4 archives.
+    rm -f ark[1-9]isdone
+else
+    echo You still need to unpack the following archives:
+    echo "        " ${MISSING}
+fi
+##  End of shell archive.
+exit 0
+-- 
+Please send comp.sources.unix-related mail to rsalz@uunet.uu.net.
+

@@ -1,0 +1,1368 @@
+#! /bin/sh
+# This is a shell archive.  Remove anything before this line, then unpack
+# it by saving it into a file and typing "sh file".  To overwrite existing
+# files, type "sh file -c".  You can also feed this as standard input via
+# unshar, or by typing "sh <file", e.g..  If this archive is complete, you
+# will see the following message at the end:
+#		"End of archive 4 (of 4)."
+# Contents:  normal.c
+# Wrapped by rsalz@fig.bbn.com on Sun Jun  5 11:45:50 1988
+PATH=/bin:/usr/bin:/usr/ucb ; export PATH
+if test -f 'normal.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'normal.c'\"
+else
+echo shar: Extracting \"'normal.c'\" \(23691 characters\)
+sed "s/^X//" >'normal.c' <<'END_OF_FILE'
+X/*
+X * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
+X *
+X * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+X *
+X */
+X
+X/*
+X * This file contains the main routine for processing characters in
+X * command mode as well as routines for handling the operators.
+X */
+X
+X#include "stevie.h"
+X
+static	void	doshift(), dodelete(), doput(), dochange();
+static	void	tabinout(), startinsert();
+static	bool_t	dojoin(), doyank();
+X
+X/*
+X * Macro evaluates true if char 'c' is a valid identifier character
+X */
+X#define	IDCHAR(c)	(isalpha(c) || isdigit(c) || (c) == '_')
+X
+X/*
+X * 'can_undo' is a relatively temporary hack so I can debug the 'undo'
+X * code for various operations independently. If 'can_undo' is set,
+X * then the most recent edit can be undone. Otherwise, attempting to
+X * undo an edit will result in an apologetic message. Can_undo is
+X * cleared in the macro 'CHANGED', so that every change, by default,
+X * cannot be undone. If the undo code for an edit works, 'can_undo'
+X * should be set, AFTER the CHANGED macro is invoked.
+X */
+bool_t	can_undo = FALSE;
+X
+X/*
+X * Operators
+X */
+X#define	NOP	0		/* no pending operation */
+X#define	DELETE	1
+X#define	YANK	2
+X#define	CHANGE	3
+X#define	LSHIFT	4
+X#define	RSHIFT	5
+X
+X#define	CLEAROP	(operator = NOP)	/* clear any pending operator */
+X
+static	int	operator = NOP;		/* current pending operator */
+X
+X/*
+X * When a cursor motion command is made, it is marked as being a character
+X * or line oriented motion. Then, if an operator is in effect, the operation
+X * becomes character or line oriented accordingly.
+X *
+X * Character motions are marked as being inclusive or not. Most char.
+X * motions are inclusive, but some (e.g. 'w') are not.
+X *
+X * Generally speaking, every command in normal() should either clear any
+X * pending operator (with CLEAROP), or set the motion type variable.
+X */
+X
+X/*
+X * Motion types
+X */
+X#define	MBAD	(-1)		/* 'bad' motion type marks unusable yank buf */
+X#define	MCHAR	0
+X#define	MLINE	1
+X
+static	int	mtype;			/* type of the current cursor motion */
+static	bool_t	mincl;			/* true if char motion is inclusive */
+X
+static	LPTR	startop;		/* cursor pos. at start of operator */
+X
+X/*
+X * Operators can have counts either before the operator, or between the
+X * operator and the following cursor motion as in:
+X *
+X *	d3w or 3dw
+X *
+X * If a count is given before the operator, it is saved in opnum. If
+X * normal() is called with a pending operator, the count in opnum (if
+X * present) overrides any count that came later.
+X */
+static	int	opnum = 0;
+X
+X
+X#define	DEFAULT1(x)	(((x) == 0) ? 1 : (x))
+X
+X/*
+X * normal
+X *
+X * Execute a command in normal mode.
+X */
+X
+void
+normal(c)
+int c;
+X{
+X	char *p, *q;
+X	int n;
+X	bool_t flag = FALSE;
+X	int type = 0;		/* used in some operations to modify type */
+X	int dir = FORWARD;	/* search direction */
+X	int nchar = NUL;
+X	bool_t finish_op;
+X
+X	/*
+X	 * If there is an operator pending, then the command we take
+X	 * this time will terminate it. Finish_op tells us to finish
+X	 * the operation before returning this time (unless the operation
+X	 * was cancelled.
+X	 */
+X	finish_op = (operator != NOP);
+X
+X	/*
+X	 * If we're in the middle of an operator AND we had a count before
+X	 * the operator, then that count overrides the current value of
+X	 * Prenum. What this means effectively, is that commands like
+X	 * "3dw" get turned into "d3w" which makes things fall into place
+X	 * pretty neatly.
+X	 */
+X	if (finish_op) {
+X		if (opnum != 0)
+X			Prenum = opnum;
+X	} else
+X		opnum = 0;
+X
+X	switch(c & 0xff){
+X
+X	case K_HELP:
+X		CLEAROP;
+X		if (help()) {
+X			screenclear();
+X			updatescreen();
+X		}
+X		break;
+X
+X	case CTRL('L'):
+X		CLEAROP;
+X		screenclear();
+X		updatescreen();
+X		break;
+X
+X	case CTRL('D'):
+X		CLEAROP;
+X		if (Prenum)
+X			P(P_SS) = (Prenum > Rows-1) ? Rows-1 : Prenum;
+X		scrollup(P(P_SS));
+X		onedown(P(P_SS));
+X		updatescreen();
+X		break;
+X
+X	case CTRL('U'):
+X		CLEAROP;
+X		if (Prenum)
+X			P(P_SS) = (Prenum > Rows-1) ? Rows-1 : Prenum;
+X		scrolldown(P(P_SS));
+X		oneup(P(P_SS));
+X		updatescreen();
+X		break;
+X
+X	/*
+X	 * ^F and ^B are neat hacks, but don't take counts. This is very
+X	 * code-efficient, and does the right thing. I'll fix it later
+X	 * to take a count. The old code took a count, but didn't do the
+X	 * right thing in other respects (e.g. leaving some context).
+X	 */
+X	case CTRL('F'):
+X#if 1
+X		screenclear();
+X		stuffin("Lz\nM");
+X#else
+X		/*
+X		 * Old code
+X		 */
+X		CLEAROP;
+X		n = DEFAULT1(Prenum);
+X		if ( ! onedown(Rows * n) )
+X			beep();
+X		cursupdate();
+X#endif
+X		break;
+X
+X	case CTRL('B'):
+X#if 1
+X		screenclear();
+X		stuffin("Hz-M");
+X#else
+X		/*
+X		 * Old code
+X		 */
+X		CLEAROP;
+X		n = DEFAULT1(Prenum);
+X		if ( ! oneup(Rows * n) )
+X			beep();
+X		cursupdate();
+X#endif
+X		break;
+X
+X	case CTRL('E'):
+X		CLEAROP;
+X		scrollup(DEFAULT1(Prenum));
+X		updatescreen();
+X		break;
+X
+X	case CTRL('Y'):
+X		CLEAROP;
+X		scrolldown(DEFAULT1(Prenum));
+X		updatescreen();
+X		break;
+X
+X	case 'z':
+X		CLEAROP;
+X		switch (vgetc()) {
+X		case NL:		/* put Curschar at top of screen */
+X		case CR:
+X			*Topchar = *Curschar;
+X			Topchar->index = 0;
+X			updatescreen();
+X			break;
+X
+X		case '.':		/* put Curschar in middle of screen */
+X			n = Rows/2;
+X			goto dozcmd;
+X
+X		case '-':		/* put Curschar at bottom of screen */
+X			n = Rows-1;
+X			/* fall through */
+X
+X		dozcmd:
+X			{
+X				register LPTR	*lp = Curschar;
+X				register int	l = 0;
+X
+X				while ((l < n) && (lp != NULL)) {
+X					l += plines(lp);
+X					*Topchar = *lp;
+X					lp = prevline(lp);
+X				}
+X			}
+X			Topchar->index = 0;
+X			updatescreen();
+X			break;
+X
+X		default:
+X			beep();
+X		}
+X		break;
+X
+X	case CTRL('G'):
+X		CLEAROP;
+X		fileinfo();
+X		break;
+X
+X	case 'G':
+X		mtype = MLINE;
+X		*Curschar = *gotoline(Prenum);
+X		break;
+X
+X	case 'H':
+X		mtype = MLINE;
+X		*Curschar = *Topchar;
+X		for (n = Prenum; n && onedown(1) ;n--)
+X			;
+X		beginline(TRUE);
+X		break;
+X
+X	case 'M':
+X		mtype = MLINE;
+X		*Curschar = *Topchar;
+X		for (n = 0; n < Rows/2 && onedown(1) ;n++)
+X			;
+X		beginline(TRUE);
+X		break;
+X
+X	case 'L':
+X		mtype = MLINE;
+X		*Curschar = *prevline(Botchar);
+X		for (n = Prenum; n && oneup(1) ;n--)
+X			;
+X		beginline(TRUE);
+X		break;
+X
+X	case 'l':
+X	case K_RARROW:
+X	case ' ':
+X		mtype = MCHAR;
+X		mincl = FALSE;
+X		n = DEFAULT1(Prenum);
+X		while (n--) {
+X			if ( ! oneright() )
+X				beep();
+X		}
+X		set_want_col = TRUE;
+X		break;
+X
+X	case 'h':
+X	case K_LARROW:
+X	case CTRL('H'):
+X		mtype = MCHAR;
+X		mincl = FALSE;
+X		n = DEFAULT1(Prenum);
+X		while (n--) {
+X			if ( ! oneleft() )
+X				beep();
+X		}
+X		set_want_col = TRUE;
+X		break;
+X
+X	case '-':
+X		flag = TRUE;
+X		/* fall through */
+X
+X	case 'k':
+X	case K_UARROW:
+X	case CTRL('P'):
+X		mtype = MLINE;
+X		if ( ! oneup(DEFAULT1(Prenum)) )
+X			beep();
+X		if (flag)
+X			beginline(TRUE);
+X		break;
+X
+X	case '+':
+X	case CR:
+X	case NL:
+X		flag = TRUE;
+X		/* fall through */
+X
+X	case 'j':
+X	case K_DARROW:
+X	case CTRL('N'):
+X		mtype = MLINE;
+X		if ( ! onedown(DEFAULT1(Prenum)) )
+X			beep();
+X		if (flag)
+X			beginline(TRUE);
+X		break;
+X
+X	/*
+X	 * This is a strange motion command that helps make operators
+X	 * more logical. It is actually implemented, but not documented
+X	 * in the real 'vi'. This motion command actually refers to "the
+X	 * current line". Commands like "dd" and "yy" are really an alternate
+X	 * form of "d_" and "y_". It does accept a count, so "d3_" works to
+X	 * delete 3 lines.
+X	 */
+X	case '_':
+X	lineop:
+X		mtype = MLINE;
+X		onedown(DEFAULT1(Prenum)-1);
+X		break;
+X
+X	case '|':
+X		mtype = MCHAR;
+X		mincl = TRUE;
+X		beginline(FALSE);
+X		if (Prenum > 0)
+X			*Curschar = *coladvance(Curschar, Prenum-1);
+X		Curswant = Prenum - 1;
+X		break;
+X		
+X	case CTRL(']'):			/* :ta to current identifier */
+X		CLEAROP;
+X		{
+X			char	c;
+X			LPTR	save;
+X
+X			save = *Curschar;
+X			/*
+X			 * First back up to start of identifier. This
+X			 * doesn't match the real vi but I like it a
+X			 * little better and it shouldn't bother anyone.
+X			 */
+X			c = gchar(Curschar);
+X			while (IDCHAR(c)) {
+X				if (!oneleft())
+X					break;
+X				c = gchar(Curschar);
+X			}
+X			if (!IDCHAR(c))
+X				oneright();
+X
+X			stuffin(":ta ");
+X			/*
+X			 * Now grab the chars in the identifier
+X			 */
+X			c = gchar(Curschar);
+X			while (IDCHAR(c)) {
+X				stuffin(mkstr(c));
+X				if (!oneright())
+X					break;
+X				c = gchar(Curschar);
+X			}
+X			stuffin("\n");
+X
+X			*Curschar = save;	/* restore, in case of error */
+X		}
+X		break;
+X
+X	case '%':
+X		mtype = MCHAR;
+X		mincl = TRUE;
+X		{
+X			LPTR	*pos;
+X
+X			if ((pos = showmatch()) == NULL)
+X				beep();
+X			else {
+X				setpcmark();
+X				*Curschar = *pos;
+X				set_want_col = TRUE;
+X			}
+X		}
+X		break;
+X		
+X	/*
+X	 * Word Motions
+X	 */
+X
+X	case 'B':
+X		type = 1;
+X		/* fall through */
+X
+X	case 'b':
+X		mtype = MCHAR;
+X		mincl = FALSE;
+X		set_want_col = TRUE;
+X		for (n = DEFAULT1(Prenum); n > 0 ;n--) {
+X			LPTR	*pos;
+X
+X			if ((pos = bck_word(Curschar, type)) == NULL) {
+X				beep();
+X				break;
+X			} else
+X				*Curschar = *pos;
+X		}
+X		break;
+X
+X	case 'W':
+X		type = 1;
+X		/* fall through */
+X
+X	case 'w':
+X		/*
+X		 * This is a little strange. To match what the real vi
+X		 * does, we effectively map 'cw' to 'ce', and 'cW' to 'cE'.
+X		 * This seems impolite at first, but it's really more
+X		 * what we mean when we say 'cw'.
+X		 */
+X		if (operator == CHANGE)
+X			goto doecmd;
+X
+X		mtype = MCHAR;
+X		mincl = FALSE;
+X		set_want_col = TRUE;
+X		for (n = DEFAULT1(Prenum); n > 0 ;n--) {
+X			LPTR	*pos;
+X
+X			if ((pos = fwd_word(Curschar, type)) == NULL) {
+X				beep();
+X				break;
+X			} else
+X				*Curschar = *pos;
+X		}
+X		break;
+X
+X	case 'E':
+X		type = 1;
+X		/* fall through */
+X
+X	case 'e':
+X	doecmd:
+X		mtype = MCHAR;
+X		mincl = TRUE;
+X		set_want_col = TRUE;
+X		for (n = DEFAULT1(Prenum); n > 0 ;n--) {
+X			LPTR	*pos;
+X
+X			if ((pos = end_word(Curschar, type)) == NULL) {
+X				beep();
+X				break;
+X			} else
+X				*Curschar = *pos;
+X		}
+X		break;
+X
+X	case '$':
+X		mtype = MCHAR;
+X		mincl = TRUE;
+X		while ( oneright() )
+X			;
+X		Curswant = 999;		/* so we stay at the end */
+X		break;
+X
+X	case '^':
+X		flag = TRUE;
+X		/* fall through */
+X
+X	case '0':
+X		mtype = MCHAR;
+X		mincl = TRUE;
+X		beginline(flag);
+X		break;
+X
+X	case 'x':
+X		CLEAROP;
+X		if (lineempty())	/* can't do it on a blank line */
+X			beep();
+X		if (Prenum)
+X			stuffnum(Prenum);
+X		stuffin("d.");
+X		break;
+X
+X#if 0
+X		/* Can't do it if we're on a blank line. */
+X		if (lineempty())
+X			beep();
+X		else {
+X			addtobuff(Redobuff,'x',NULL);
+X			/* To undo it, we insert the same character back. */
+X			resetundo();
+X			addtobuff(Undobuff, 'i', gchar(Curschar), ESC, NUL);
+X			*Uncurschar = *Curschar;
+X			delchar(TRUE);
+X			updateline();
+X		}
+X		break;
+X#endif
+X
+X	case 'X':
+X		CLEAROP;
+X		if (!oneleft())
+X			beep();
+X		else {
+X			addtobuff(Redobuff, 'X', NUL);
+X			resetundo();
+X			addtobuff(Undobuff, 'i', gchar(Curschar), ESC, NUL);
+X			*Uncurschar = *Curschar;
+X			delchar(TRUE);
+X			updateline();
+X		}
+X		break;
+X
+X	case 'A':
+X		set_want_col = TRUE;
+X		while (oneright())
+X			;
+X		/* fall through */
+X
+X	case 'a':
+X		CLEAROP;
+X		/* Works just like an 'i'nsert on the next character. */
+X		if (!lineempty())
+X			inc(Curschar);
+X		resetundo();
+X		startinsert(mkstr(c), FALSE);
+X		break;
+X
+X	case 'I':
+X		beginline(TRUE);
+X		/* fall through */
+X
+X	case 'i':
+X	case K_INSERT:
+X		CLEAROP;
+X		resetundo();
+X		startinsert(mkstr(c), FALSE);
+X		break;
+X
+X	case 'o':
+X		CLEAROP;
+X		opencmd(FORWARD, TRUE);
+X		resetundo();
+X		addtobuff(Undobuff, 'J', NULL);
+X		startinsert("o", TRUE);
+X		break;
+X
+X	case 'O':
+X		CLEAROP;
+X		opencmd(BACKWARD, TRUE);
+X		resetundo();
+X		startinsert("O", TRUE);
+X		break;
+X
+X	case 'd':
+X		if (operator == DELETE)		/* handle 'dd' */
+X			goto lineop;
+X		if (Prenum != 0)
+X			opnum = Prenum;
+X		startop = *Curschar;
+X		operator = DELETE;
+X		break;
+X
+X	/*
+X	 * Some convenient abbreviations...
+X	 */
+X
+X	case 'D':
+X		stuffin("d$");
+X		break;
+X
+X	case 'Y':
+X		if (Prenum)
+X			stuffnum(Prenum);
+X		stuffin("yy");
+X		break;
+X
+X	case 'C':
+X		stuffin("c$");
+X		break;
+X
+X	case 'c':
+X		if (operator == CHANGE) {	/* handle 'cc' */
+X			CLEAROP;
+X			stuffin("0c$");
+X			break;
+X		}
+X		if (Prenum != 0)
+X			opnum = Prenum;
+X		startop = *Curschar;
+X		operator = CHANGE;
+X		break;
+X
+X	case 'y':
+X		if (operator == YANK)		/* handle 'yy' */
+X			goto lineop;
+X		if (Prenum != 0)
+X			opnum = Prenum;
+X		startop = *Curschar;
+X		operator = YANK;
+X		break;
+X
+X	case 'p':
+X		doput(FORWARD);
+X		break;
+X
+X	case 'P':
+X		doput(BACKWARD);
+X		break;
+X
+X	case '>':
+X		if (operator == RSHIFT)		/* handle >> */
+X			goto lineop;
+X		if (Prenum != 0)
+X			opnum = Prenum;
+X		startop = *Curschar;
+X		operator = RSHIFT;
+X		break;
+X
+X	case '<':
+X		if (operator == LSHIFT)		/* handle << */
+X			goto lineop;
+X		if (Prenum != 0)
+X			opnum = Prenum;
+X		startop = *Curschar;	/* save current position */
+X		operator = LSHIFT;
+X		break;
+X
+X	case 's':				/* substitute characters */
+X		if (Prenum)
+X			stuffnum(Prenum);
+X		stuffin("c.");
+X		break;
+X
+X	case '?':
+X	case '/':
+X	case ':':
+X		CLEAROP;
+X		readcmdline(c, NULL);
+X		break;
+X
+X	case 'n':
+X		mtype = MCHAR;
+X		mincl = FALSE;
+X		set_want_col = TRUE;
+X		repsearch(0);
+X		break;
+X
+X	case 'N':
+X		mtype = MCHAR;
+X		mincl = FALSE;
+X		set_want_col = TRUE;
+X		repsearch(1);
+X		break;
+X
+X	/*
+X	 * Character searches
+X	 */
+X	case 'T':
+X		dir = BACKWARD;
+X		/* fall through */
+X
+X	case 't':
+X		type = 1;
+X		goto docsearch;
+X
+X	case 'F':
+X		dir = BACKWARD;
+X		/* fall through */
+X
+X	case 'f':
+X	docsearch:
+X		mtype = MCHAR;
+X		mincl = TRUE;
+X		set_want_col = TRUE;
+X		if ((nchar = vgetc()) == ESC)	/* search char */
+X			break;
+X		if (!searchc(nchar, dir, type))
+X			beep();
+X		break;
+X
+X	case ',':
+X		flag = 1;
+X		/* fall through */
+X
+X	case ';':
+X		mtype = MCHAR;
+X		mincl = TRUE;
+X		set_want_col = TRUE;
+X		if (!crepsearch(flag))
+X			beep();
+X		break;
+X
+X	/*
+X	 * Function searches
+X	 */
+X
+X	case '[':
+X		dir = BACKWARD;
+X		/* fall through */
+X
+X	case ']':
+X		mtype = MLINE;
+X		set_want_col = TRUE;
+X		if (vgetc() != c)
+X			beep();
+X
+X		if (!findfunc(dir))
+X			beep();
+X		break;
+X
+X	/*
+X	 * Marks
+X	 */
+X
+X	case 'm':
+X		CLEAROP;
+X		if (!setmark(vgetc()))
+X			beep();
+X		break;
+X
+X	case '\'':
+X		flag = TRUE;
+X		/* fall through */
+X
+X	case '`':
+X		{
+X			LPTR	mtmp, *mark = getmark(vgetc());
+X
+X			if (mark == NULL)
+X				beep();
+X			else {
+X				mtmp = *mark;
+X				setpcmark();
+X				*Curschar = mtmp;
+X				if (flag)
+X					beginline(TRUE);
+X			}
+X			mtype = flag ? MLINE : MCHAR;
+X			mincl = TRUE;		/* ignored if not MCHAR */
+X			set_want_col = TRUE;
+X		}
+X		break;
+X
+X	case 'r':
+X		CLEAROP;
+X		if (lineempty()) {	/* Nothing to replace */
+X			beep();
+X			break;
+X		}
+X		if ((nchar = vgetc()) == ESC)
+X			break;
+X		resetundo();
+X
+X		addtobuff(Undobuff, 'r', gchar(Curschar), NULL);
+X		*Uncurschar = *Curschar;
+X
+X		/* Change current character. */
+X		pchar(Curschar, nchar);
+X
+X		/* Save stuff necessary to redo it */
+X		addtobuff(Redobuff, 'r', nchar, NULL);
+X
+X		CHANGED;
+X		can_undo = TRUE;
+X		updateline();
+X		break;
+X
+X	case '~':		/* swap case */
+X		CLEAROP;
+X		if (lineempty()) {
+X			beep();
+X			break;
+X		}
+X		c = gchar(Curschar);
+X
+X		if (isalpha(c)) {
+X			stuffin("r");		/* replace with other case */
+X			if (islower(c))
+X				stuffin(mkstr(toupper(c)));
+X			else
+X				stuffin(mkstr(tolower(c)));
+X		}
+X		stuffin("l");			/* move right when done */
+X
+X		break;
+X
+X	case 'J':
+X		CLEAROP;
+X
+X		if (!dojoin())
+X			beep();
+X
+X		resetundo();
+X		*Uncurschar = *Curschar;
+X		addtobuff(Undobuff, 'i', NL, ESC, NULL);
+X		addtobuff(Redobuff,'J',NULL);
+X		updatescreen();
+X		break;
+X
+X	case K_CGRAVE:			/* shorthand command */
+X		CLEAROP;
+X		stuffin(":e #\n");
+X		break;
+X
+X	case 'Z':			/* write, if changed, and exit */
+X		if (vgetc() != 'Z') {
+X			beep();
+X			break;
+X		}
+X
+X		if (Changed) {
+X			if (Filename != NULL) {
+X				if (!writeit(Filename, NULL, NULL))
+X					return;
+X			} else {
+X				emsg("No output file");
+X				return;
+X			}
+X		}
+X		getout();
+X		break;
+X
+X	case '.':
+X		/*
+X		 * If a delete is in effect, we let '.' help out the same
+X		 * way that '_' helps for some line operations. It's like
+X		 * an 'l', but subtracts one from the count and is inclusive.
+X		 */
+X		if (operator == DELETE || operator == CHANGE) {
+X			if (Prenum != 0) {
+X				n = DEFAULT1(Prenum) - 1;
+X				while (n--)
+X					if (! oneright())
+X						break;
+X			}
+X			mtype = MCHAR;
+X			mincl = TRUE;
+X		} else {			/* a normal 'redo' */
+X			CLEAROP;
+X			stuffin(Redobuff);
+X		}
+X		break;
+X
+X	case 'u':
+X	case K_UNDO:
+X		CLEAROP;
+X		if (!can_undo) {
+X			msg("Sorry, can't undo last edit");
+X			break;
+X		}
+X
+X		if ( *Undobuff != NUL ) {
+X			*Curschar = *Uncurschar;
+X			stuffin(Undobuff);
+X			*Undobuff = NUL;
+X		}
+X		if ( Undelchars > 0 ) {
+X			*Curschar = *Uncurschar;
+X			/* construct the next Undobuff and Redobuff, which */
+X			/* will re-insert the characters we're deleting. */
+X			p = Undobuff;
+X			q = Redobuff;
+X			*p++ = *q++ = 'i';
+X			/*
+X			 * Fix this loop to effectively turn nulls into
+X			 * NL's in the Undo and Redo buffs and do the
+X			 * joins needed.
+X			 */
+X			while ( Undelchars-- > 0 ) {
+X				char	c = gchar(Curschar);
+X
+X				if (c == NUL) {
+X					*p++ = *q++ = NL;
+X					dojoin();
+X				} else {
+X					*p++ = *q++ = c;
+X					delchar(FALSE);
+X				}
+X			}
+X			/* Finish constructing Uncursbuff, and Uncurschar */
+X			/* is left unchanged. */
+X			*p++ = *q++ = ESC;
+X			*p = *q = NUL;
+X			/* Undelchars has been reset to 0 */
+X			updatescreen();
+X		}
+X		can_undo = FALSE;
+X		break;
+X
+X	default:
+X		CLEAROP;
+X		beep();
+X		break;
+X	}
+X
+X	/*
+X	 * If an operation is pending, handle it...
+X	 */
+X	if (finish_op) {		/* we just finished an operator */
+X		if (operator == NOP)	/* ... but it was cancelled */
+X			return;
+X
+X		switch (operator) {
+X
+X		case LSHIFT:
+X		case RSHIFT:
+X			doshift(operator, c, nchar, Prenum);
+X			break;
+X
+X		case DELETE:
+X			dodelete(c, nchar, Prenum);
+X			break;
+X
+X		case YANK:
+X			doyank();	/* no redo on yank... */
+X			break;
+X
+X		case CHANGE:
+X			dochange(c, nchar, Prenum);
+X			break;
+X
+X		default:
+X			beep();
+X		}
+X		operator = NOP;
+X	}
+X}
+X
+X/*
+X * doshift - handle a shift operation
+X */
+static void
+doshift(op, c1, c2, num)
+int	op;
+char	c1, c2;
+int	num;
+X{
+X	LPTR	top, bot;
+X	int	nlines;
+X	char	opchar;
+X
+X	top = startop;
+X	bot = *Curschar;
+X
+X	if (lt(&bot, &top))
+X		pswap(&top, &bot);
+X
+X	nlines = cntllines(&top, &bot);
+X	*Curschar = top;
+X	tabinout((op == LSHIFT), nlines);
+X
+X	/* construct Redo buff */
+X	opchar = (op == LSHIFT) ? '<' : '>';
+X	if (num != 0)
+X		sprintf(Redobuff, "%c%d%c%c", opchar, num, c1, c2);
+X	else
+X		sprintf(Redobuff, "%c%c%c", opchar, c1, c2);
+X
+X	/*
+X	 * The cursor position afterward is the prior of the two positions.
+X	 */
+X	*Curschar = top;
+X
+X	/*
+X	 * If we were on the last char of a line that got shifted left,
+X	 * then move left one so we aren't beyond the end of the line
+X	 */
+X	if (gchar(Curschar) == NUL && Curschar->index > 0)
+X		Curschar->index--;
+X
+X	updatescreen();
+X
+X	if (nlines > P(P_RP))
+X		smsg("%d lines %ced", nlines, opchar);
+X}
+X
+X/*
+X * dodelete - handle a delete operation
+X */
+static void
+dodelete(c1, c2, num)
+char	c1, c2;
+int	num;
+X{
+X	LPTR	top, bot;
+X	int	nlines;
+X	int	n;
+X
+X	/*
+X	 * Do a yank of whatever we're about to delete. If there's too much
+X	 * stuff to fit in the yank buffer, then get a confirmation before
+X	 * doing the delete. This is crude, but simple. And it avoids doing
+X	 * a delete of something we can't put back if we want.
+X	 */
+X	if (!doyank()) {
+X		msg("yank buffer exceeded: press <y> to confirm");
+X		if (vgetc() != 'y') {
+X			msg("delete aborted");
+X			*Curschar = startop;
+X			return;
+X		}
+X	}
+X
+X	top = startop;
+X	bot = *Curschar;
+X
+X	if (lt(&bot, &top))
+X		pswap(&top, &bot);
+X
+X	nlines = cntllines(&top, &bot);
+X	*Curschar = top;
+X	cursupdate();
+X
+X	if (mtype == MLINE) {
+X		delline(nlines);
+X	} else {
+X		if (!mincl && bot.index != 0)
+X			dec(&bot);
+X
+X		if (top.linep == bot.linep) {		/* del. within line */
+X			n = bot.index - top.index + 1;
+X			while (n--)
+X				if (!delchar(TRUE))
+X					break;
+X		} else {				/* del. between lines */
+X			n = Curschar->index;
+X			while (Curschar->index >= n)
+X				if (!delchar(TRUE))
+X					break;
+X
+X			top = *Curschar;
+X			*Curschar = *nextline(Curschar);
+X			delline(nlines-2);
+X			Curschar->index = 0;
+X			n = bot.index + 1;
+X			while (n--)
+X				if (!delchar(TRUE))
+X					break;
+X			*Curschar = top;
+X			dojoin();
+X		}
+X	}
+X
+X	/* construct Redo buff */
+X	if (num != 0)
+X		sprintf(Redobuff, "d%d%c%c", num, c1, c2);
+X	else
+X		sprintf(Redobuff, "d%c%c", c1, c2);
+X
+X	if (mtype == MCHAR && nlines == 1)
+X		updateline();
+X	else
+X		updatescreen();
+X
+X	if (nlines > P(P_RP))
+X		smsg("%d fewer lines", nlines);
+X}
+X
+X/*
+X * dochange - handle a change operation
+X */
+static void
+dochange(c1, c2, num)
+char	c1, c2;
+int	num;
+X{
+X	char	sbuf[16];
+X	bool_t	doappend;	/* true if we should do append, not insert */
+X
+X	doappend = endofline( (lt(Curschar, &startop)) ? &startop: Curschar);
+X
+X	if (mtype == MLINE) {
+X		msg("multi-line changes not yet supported");
+X		return;
+X	}
+X
+X	dodelete(c1, c2, num);
+X
+X	if (num)
+X		sprintf(sbuf, "c%d%c%c", num, c1, c2);
+X	else
+X		sprintf(sbuf, "c%c%c", c1, c2);
+X
+X	if (doappend && !lineempty())
+X		inc(Curschar);
+X
+X	startinsert(sbuf);
+X}
+X
+X#define	YBSIZE	1024
+X
+static	char	ybuf[YBSIZE];
+static	int	ybtype = MBAD;
+X
+static bool_t
+doyank()
+X{
+X	LPTR	top, bot;
+X	char	*yptr = ybuf;
+X	char	*ybend = &ybuf[YBSIZE-1];
+X	int	nlines;
+X
+X	top = startop;
+X	bot = *Curschar;
+X
+X	if (lt(&bot, &top))
+X		pswap(&top, &bot);
+X
+X	nlines = cntllines(&top, &bot);
+X
+X	ybtype = mtype;			/* set the yank buffer type */
+X
+X	if (mtype == MLINE) {
+X		top.index = 0;
+X		bot.index = strlen(bot.linep->s);
+X		/*
+X		 * The following statement checks for the special case of
+X		 * yanking a blank line at the beginning of the file. If
+X		 * not handled right, we yank an extra char (a newline).
+X		 */
+X		if (dec(&bot) == -1) {
+X			ybuf[0] = NUL;
+X			if (operator == YANK)
+X				*Curschar = startop;
+X			return TRUE;
+X		}
+X	} else {
+X		if (!mincl) {
+X			if (bot.index)
+X				bot.index--;
+X		}
+X	}
+X
+X	for (; ltoreq(&top, &bot) ;inc(&top)) {
+X		*yptr = (gchar(&top) != NUL) ? gchar(&top) : NL;
+X		if (++yptr >= ybend) {
+X			msg("yank too big for buffer");
+X			ybtype = MBAD;
+X			return FALSE;
+X		}
+X	}
+X
+X	*yptr = NUL;
+X
+X	if (operator == YANK) {	/* restore Curschar if really doing yank */
+X		*Curschar = startop;
+X
+X		if (nlines > P(P_RP))
+X			smsg("%d lines yanked", nlines);
+X	}
+X
+X	return TRUE;
+X}
+X
+static void
+doput(dir)
+int	dir;
+X{
+X	if (ybtype == MBAD) {
+X		beep();
+X		return;
+X	}
+X	
+X	if (dir == FORWARD)
+X		stuffin( (ybtype == MCHAR) ? "a" : "o" );
+X	else
+X		stuffin( (ybtype == MCHAR) ? "i" : "O" );
+X
+X	stuffin(ybuf);
+X	stuffin(mkstr(ESC));
+X}
+X
+X/*
+X * tabinout(inout,num)
+X *
+X * If inout==0, add a tab to the begining of the next num lines.
+X * If inout==1, delete a tab from the beginning of the next num lines.
+X */
+static void
+tabinout(inout, num)
+int	inout;
+int	num;
+X{
+X	int	ntodo = num;
+X	LPTR	*p;
+X
+X	/* construct undo stuff */
+X	resetundo();
+X	*Uncurschar = *Curschar;
+X	sprintf(Undobuff, "%d%s", num, (inout == 0) ? "<<" : ">>");
+X
+X	beginline(FALSE);
+X	while ( ntodo-- > 0 ) {
+X		beginline(FALSE);
+X		if ( inout == 0 )
+X			inschar(TAB);
+X		else {
+X			if ( gchar(Curschar) == TAB )
+X				delchar(TRUE);
+X		}
+X		if ( ntodo > 0 ) {
+X			if ( (p=nextline(Curschar)) != NULL )
+X				*Curschar = *p;
+X			else
+X				break;
+X		}
+X	}
+X	can_undo = TRUE;
+X}
+X
+static void
+startinsert(initstr, startln)
+char *initstr;
+int	startln;	/* if set, insert point really at start of line */
+X{
+X	char *p, c;
+X
+X	*Insstart = *Curschar;
+X	if (startln)
+X		Insstart->index = 0;
+X	Ninsert = 0;
+X	Insptr = Insbuff;
+X	for (p=initstr; (c=(*p++))!='\0'; )
+X		*Insptr++ = c;
+X	State = INSERT;
+X	if (P(P_MO))
+X		msg("Insert Mode");
+X}
+X
+void
+resetundo()
+X{
+X	Undelchars = 0;
+X	*Undobuff = '\0';
+X	Uncurschar->linep = NULL;
+X}
+X
+static bool_t
+dojoin()
+X{
+X	int	scol;		/* save cursor column */
+X	int	size;		/* size of the joined line */
+X
+X	if (nextline(Curschar) == NULL)		/* on last line */
+X		return FALSE;
+X
+X	if (!canincrease(size = strlen(Curschar->linep->next->s)))
+X		return FALSE;
+X
+X	while (oneright())			/* to end of line */
+X		;
+X
+X	strcat(Curschar->linep->s, Curschar->linep->next->s);
+X
+X	/*
+X	 * Delete the following line. To do this we move the cursor
+X	 * there briefly, and then move it back. Don't back up if the
+X	 * delete made us the last line.
+X	 */
+X	Curschar->linep = Curschar->linep->next;
+X	scol = Curschar->index;
+X
+X	if (nextline(Curschar) != NULL) {
+X		delline(1);
+X		Curschar->linep = Curschar->linep->prev;
+X	} else
+X		delline(1);
+X
+X	Curschar->index = scol;
+X
+X	oneright();		/* go to first char. of joined line */
+X
+X	if (size != 0) {
+X		/*
+X		 * Delete leading white space on the joined line
+X		 * and insert a single space.
+X		 */
+X		while (gchar(Curschar) == ' ' || gchar(Curschar) == TAB)
+X			delchar(TRUE);
+X		inschar(' ');
+X	}
+X
+X	return TRUE;
+X}
+X
+char *
+mkstr(c)
+char	c;
+X{
+X	static	char	s[2];
+X
+X	s[0] = c;
+X	s[1] = NUL;
+X
+X	return s;
+X}
+END_OF_FILE
+if test 23691 -ne `wc -c <'normal.c'`; then
+    echo shar: \"'normal.c'\" unpacked with wrong size!
+fi
+# end of 'normal.c'
+fi
+echo shar: End of archive 4 \(of 4\).
+cp /dev/null ark4isdone
+MISSING=""
+for I in 1 2 3 4 ; do
+    if test ! -f ark${I}isdone ; then
+	MISSING="${MISSING} ${I}"
+    fi
+done
+if test "${MISSING}" = "" ; then
+    echo You have unpacked all 4 archives.
+    rm -f ark[1-9]isdone
+else
+    echo You still need to unpack the following archives:
+    echo "        " ${MISSING}
+fi
+##  End of shell archive.
+exit 0
+-- 
+Please send comp.sources.unix-related mail to rsalz@uunet.uu.net.
+
