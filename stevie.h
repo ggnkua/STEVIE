@@ -10,6 +10,8 @@
 /*#define UNIXPC	1	/* The AT&T UNIX PC (console) */
 /*#define TCAP		1	/* For termcap-based terminals */
 
+#define HELP
+
 #define FILELENG 64000
 #define NORMAL 0
 #define CMDLINE 1
@@ -20,7 +22,7 @@
 #define WORDSEP " \t\n()[]{},;:'\"-="
 #define SLOP 512
 
-typedef char bool_t;
+typedef int bool_t;
 #define TRUE 1
 #define FALSE 0
 #define LINEINC 1
