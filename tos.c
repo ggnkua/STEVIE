@@ -60,7 +60,7 @@ inchar()
 			c = Crawcin();
 	
 		if ((c & 0xff) != 0)
-			return ((int) c);
+			return ((int) c&0xff);
 	
 		switch ((int) (c >> 16) & 0xff) {
 	
