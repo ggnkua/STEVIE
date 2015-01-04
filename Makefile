@@ -25,7 +25,8 @@ all : stevie.ttp
 	
 $(OUT) : $(OBJ)
 #	$(CC) $(OBJ) -o stevie.ttp
-	m68k-atari-mint-ld.exe -o stevie.ttp /opt/cross-mint/lib/gcc/m68k-atari-mint/4.6.4/../../../../m68k-atari-mint/lib/crt0.o -L/opt/cross-mint/lib/gcc/m68k-atari-mint/4.6.4 -L/opt/cross-mint/lib/gcc/m68k-atari-mint/4.6.4/../../../../m68k-atari-mint/lib $(OBJ) -lgcc -lc -lgcc --traditional-format
+	m68k-atari-mint-as font.s -o obj/font.o
+	m68k-atari-mint-ld.exe -o stevie.ttp /opt/cross-mint/lib/gcc/m68k-atari-mint/4.6.4/../../../../m68k-atari-mint/lib/crt0.o -L/opt/cross-mint/lib/gcc/m68k-atari-mint/4.6.4 -L/opt/cross-mint/lib/gcc/m68k-atari-mint/4.6.4/../../../../m68k-atari-mint/lib $(OBJ) $(ODIR)/font.o -lgcc -lc -lgcc --traditional-format
 
 clean :
 	$(RM) $(ODIR)/*.o  $(OUT)
