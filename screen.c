@@ -44,7 +44,7 @@ void preshiftfont()
     UWORD *dst=(UWORD *)&fontleft;
     WORD i;
     for (i=0;i<256*8;i++)
-        *dst=(*src)<<8;
+        *dst++=(*src++)<<8;
 }
 
 /*
@@ -223,16 +223,18 @@ nexttoscreen()
  */
 void nexttoscreen_fast()
 {
-	register char *np __asm__ ("a0") = Nextscreen;
-	register char *rp __asm__ ("a1") = Realscreen;
-	//WORD no_of_chars __asm__ ("d7")=(Rows*Columns)/2-1;
-	register int row __asm__ ("d0") = Rows-1;
-    register int col __asm__ ("d1") = Columns/2-1;
-    register char *lf __asm__ ("a2")=(char *)&fontleft;
-    register char *rf __asm__ ("a3")=(char *)&fontright;
-    register *scrptr __asm__ ("a4")=phys;
     __asm__ (""
-""
+"           movem.l d0-a6,-(sp) \n\t"
+"           lea _Nextscreen,a0 \n\t"
+"           lea _Realscreen,a1 \n\t"
+"           move.l _Rows,d0 \n\t"
+"           move.l _Columns,d1 \n\t"
+"           lsr.w #1,d1 \n\t"
+"           subq.l #1,d0 \n\t"
+"           subq.l #1,d1 \n\t"
+"           lea _fontleft,a2 \n\t"
+"           lea _fontright,a3 \n\t"
+"           move.l _phys,a4  \n"
 "rowloop: \n\t"
 "            move.w d1,d7 |number of columns/2 \n"
 ""
@@ -278,6 +280,8 @@ void nexttoscreen_fast()
 "            dbra d7,drawline |do the rest of the columns \n\t"
 ""
 "            dbra d0,rowloop |do the rest of the lines \n\t"
+""
+"            movem.l (sp)+,d0-a6 \n\t"
 "");
 
 }
