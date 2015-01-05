@@ -20,7 +20,7 @@ void beep();
  * Physical screen address
  */
 
-static ULONG *phys;
+ULONG *phys;
 
 /*
  * The following buffer is used to work around a bug in TOS. It appears that

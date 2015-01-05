@@ -9,7 +9,7 @@
 
 #include "stevie.h"
 
-#include "regexp/regexp.h"	/* Henry Spencer's regular expression routines */
+#include "regexp.h"	/* Henry Spencer's regular expression routines */
 
 /*
  * This file contains various searching-related routines. These fall into
