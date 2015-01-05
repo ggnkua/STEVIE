@@ -3,15 +3,13 @@
  *
  * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
  *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
+ *
  */
 
 #include "stevie.h"
 
 #include "regexp/regexp.h"	/* Henry Spencer's regular expression routines */
-
-#ifdef	MEGAMAX
-overlay "search"
-#endif
 
 /*
  * This file contains various searching-related routines. These fall into

@@ -1,4 +1,13 @@
 /*
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
+ *
+ * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+ *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
+ *
+ */
+
+/*
  * Routines to manipulate the screen representations.
  *
  * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
@@ -19,6 +28,24 @@ void s_ins(int row, int nlines);
  */
 static	int	Cline_size;	/* size (in rows) of the cursor line */
 static	int	Cline_row;	/* starting row of the cursor line */
+
+/*
+ * Preshift the font.
+ * Our custom output routines work on a word level instead of a byte.
+ * (at least the ones that update big chunks of text, not just one
+ * character). So we use two copies of the same font, one is placed
+ * at the low byte of each word and one at the high byte. To preserve
+ * program file size, the font is only included once and at run time
+ * shifted left to produce the other copy.
+ */
+void preshiftfont()
+{
+    UWORD *src=fontright;
+    UWORD *dst=fontleft;
+    WORD i;
+    for (i=0;i<256*8;i++)
+        *dst=(*src)<<8;
+}
 
 /*
  * filetonext()

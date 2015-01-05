@@ -1,14 +1,13 @@
 /*
  * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
+ *
+ * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+ *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
+ *
  */
 
-/* One (and only 1) of the following 3 defines should be uncommented. */
-/* Most of the code is machine-independent.  Most of the machine- */
-/* dependent stuff is in window.c */
-
 #define ATARI		1	/* For the Atari 520 ST */
-/*#define UNIXPC	1	/* The AT&T UNIX PC (console) */
-/*#define TCAP		1	/* For termcap-based terminals */
 
 #define HELP
 
@@ -23,6 +22,12 @@
 #define SLOP 512
 
 typedef int bool_t;
+typedef unsigned short UWORD;
+typedef short WORD;
+typedef unsigned int ULONG;
+typedef short LONG;
+typedef unsigned char UBYTE;
+typedef char BYTE;
 #define TRUE 1
 #define FALSE 0
 #define LINEINC 1
@@ -111,5 +116,6 @@ extern LPTR *fwd_word(LPTR *p, int type);
 extern LPTR *bck_word(LPTR *p, int type);
 extern LPTR *end_word(LPTR *p, int type);
 
-//#define	Cursconf(a,b)	(int)xbios(21,a,b)
+extern void *fontright;
+extern void *fontleft;
 

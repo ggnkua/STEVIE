@@ -1,15 +1,13 @@
 /*
- * STevie - ST editor for VI enthusiasts.
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
  *
  * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+ *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
  *
  */
 
 #include "stevie.h"
-
-#ifdef	MEGAMAX
-overlay "mark"
-#endif
 
 /*
  * This file contains routines to maintain and manipulate marks.

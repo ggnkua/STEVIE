@@ -1,7 +1,9 @@
 /*
- * STevie - ST editor for VI enthusiasts.   ...Tim Thompson...twitch!tjt...
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
  *
  * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+ *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
  *
  */
 
@@ -36,10 +38,6 @@ void gotocmd(bool_t clr, bool_t fresh, bool_t firstc);
 void msg(char *s);
 void emsg(char *s);
 void wait_return();
-
-#ifdef	MEGAMAX
-overlay "cmdline"
-#endif
 
 /*
  * readcmdline() - accept a command line starting with ':', '/', or '?'

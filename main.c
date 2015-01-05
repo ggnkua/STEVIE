@@ -1,9 +1,12 @@
 /*
- * STEVIE - ST Editor for VI Enthusiasts   ...Tim Thompson...twitch!tjt...
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
  *
  * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
  *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
+ *
  */
+
 
 #include "stevie.h"
 
@@ -149,6 +152,8 @@ char	*argv[];
 		numfiles = 1;
 	}
 	curfile = 0;
+
+    preshiftfont();
 
 	windinit();
 

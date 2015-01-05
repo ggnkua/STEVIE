@@ -3,6 +3,8 @@
  *
  * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
  *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
+ *
  */
 
 #include "stevie.h"
@@ -12,10 +14,6 @@ char	*Version = "STEVIE - Version 3.10";
 static	int	helprow;
 
 #ifdef	HELP
-
-#ifdef	MEGAMAX
-overlay "help"
-#endif
 
 static	void	longline();
 

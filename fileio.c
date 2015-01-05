@@ -1,7 +1,9 @@
 /*
- * STEVIE - ST Editor for VI Enthusiasts   ...Tim Thompson...twitch!tjt...
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
  *
  * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+ *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
  *
  */
 
@@ -25,10 +27,6 @@ renum()
 
 	Fileend->linep->num = 0xffff;
 }
-
-#ifdef	MEGAMAX
-overlay "fileio"
-#endif
 
 bool_t
 readfile(fname,fromp,nochangename)

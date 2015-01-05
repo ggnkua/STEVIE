@@ -1,7 +1,9 @@
 /*
- * STevie - ST editor for VI enthusiasts.     ...Tim Thompson...twitch!tjt...
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
  *
  * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+ *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
  *
  */
 

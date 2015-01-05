@@ -35,35 +35,3 @@
 #define	T_CV	"\033e"		/* visible cursor (very optional) */
 #endif
 
-#ifdef	UNIX
-/*
- * The UNIX sequences are hard-wired for ansi-like terminals. I should
- * really use termcap/terminfo, but the UNIX port was done for profiling,
- * not for actual use, so it wasn't worth the effort.
- */
-#define	T_EL	"\033[2K"	/* erase the entire current line */
-#define	T_IL	"\033[L"	/* insert one line */
-#define	T_DL	"\033[M"	/* delete one line */
-#define	T_ED	"\033[2J"	/* erase display (may optionally home cursor) */
-#define	T_SC	"\0337"		/* save the cursor position */
-#define	T_RC	"\0338"		/* restore the cursor position */
-#define	T_CI	""		/* invisible cursor (very optional) */
-#define	T_CV	""		/* visible cursor (very optional) */
-#endif
-
-#ifdef	OS2
-/*
- * The OS/2 ansi console driver is pretty deficient. No insert or delete line
- * sequences. The erase line sequence only erases from the cursor to the end
- * of the line. For our purposes that works out okay, since the only time
- * T_EL is used is when the cursor is in column 0.
- */
-#define	T_EL	"\033[K"	/* erase the entire current line */
-#define	T_IL	""		/* insert one line */
-#define	T_DL	""		/* delete one line */
-#define	T_ED	"\033[2J"	/* erase display (may optionally home cursor) */
-#define	T_SC	"\033[s"	/* save the cursor position */
-#define	T_RC	"\033[u"	/* restore the cursor position */
-#define	T_CI	""		/* invisible cursor (very optional) */
-#define	T_CV	""		/* visible cursor (very optional) */
-#endif

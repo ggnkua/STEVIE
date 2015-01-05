@@ -1,4 +1,13 @@
 /*
+ * STevie - ST editor for VI enthusiasts.    ...Tim Thompson...twitch!tjt...
+ *
+ * Extensive modifications by:  Tony Andrews       onecom!wldrdg!tony
+ *
+ * Savaged to compile under modern gcc and improved (haha) by: George Nakos  ggn@atari.org
+ *
+ */
+
+/*
  * System-dependent routines for the Atari ST.
  */
 
@@ -234,36 +243,6 @@ delay()
 		;
 }
 
-//int
-//system(cmd)
-//char	*cmd;
-//{
-//	char	arg[1];
-//
-//	arg[0] = (char) 0;	/* no arguments passed to the shell */
-//
-//	if (Pexec(0, cmd, arg, 0L) < 0)
-//		return -1;
-//	else
-//		return 0;
-//}
-
-#ifdef	MEGAMAX
-char *
-strchr(s, c)
-char	*s;
-int	c;
-{
-	do {
-		if ( *s == c )
-			return(s);
-	} while (*s++);
-	return(NULL);
-}
-#endif
-
-//#ifdef	MEGAMAX
-
 FILE *
 fopenb(fname, mode)
 char	*fname;
@@ -276,30 +255,3 @@ char	*mode;
 	return fopen(fname, modestr);
 }
 
-//#endif
-
-/*
- * getenv() - get a string from the environment
- *
- * Both Alcyon and Megamax are missing getenv(). This routine works for
- * both compilers and with the Beckemeyer and Gulam shells. With gulam,
- * the env_style variable should be set to either "mw" or "gu".
- */
-//char *
-//getenv(name)
-//char *name;
-//{
-//	extern long _base;
-//	char *envp, *p;
-//
-//	envp = *((char **) (_base + 0x2c));
-//
-//	for (; *envp ;envp += strlen(envp)+1) {
-//		if (strncmp(envp, name, strlen(name)) == 0) {
-//			p = envp + strlen(name);
-//			if (*p++ == '=')
-//				return p;
-//		}
-//	}
-//	return (char *) 0;
-//}
