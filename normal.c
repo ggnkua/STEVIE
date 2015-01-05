@@ -515,22 +515,6 @@ int c;
 		stuffin("d.");
 		break;
 
-#if 0
-		/* Can't do it if we're on a blank line. */
-		if (lineempty())
-			beep();
-		else {
-			addtobuff(Redobuff,'x',NULL);
-			/* To undo it, we insert the same character back. */
-			resetundo();
-			addtobuff(Undobuff, 'i', gchar(Curschar), ESC, NUL);
-			*Uncurschar = *Curschar;
-			delchar(TRUE);
-			updateline();
-		}
-		break;
-#endif
-
 	case 'X':
 		CLEAROP;
 		if (!oneleft())

@@ -119,3 +119,4 @@ extern LPTR *end_word(LPTR *p, int type);
 extern void *fontright;
 extern void *fontleft;
 
+static ULONG *phys;

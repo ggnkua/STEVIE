@@ -40,8 +40,8 @@ static	int	Cline_row;	/* starting row of the cursor line */
  */
 void preshiftfont()
 {
-    UWORD *src=fontright;
-    UWORD *dst=fontleft;
+    UWORD *src=(UWORD *)&fontright;
+    UWORD *dst=(UWORD *)&fontleft;
     WORD i;
     for (i=0;i<256*8;i++)
         *dst=(*src)<<8;
@@ -216,6 +216,70 @@ nexttoscreen()
 		}
 	}
 	outstr(T_CV);		/* enable cursor again */
+}
+
+/*
+ * Like the routine above, but without using TOS calls
+ */
+void nexttoscreen_fast()
+{
+	register char *np __asm__ ("a0") = Nextscreen;
+	register char *rp __asm__ ("a1") = Realscreen;
+	//WORD no_of_chars __asm__ ("d7")=(Rows*Columns)/2-1;
+	register int row __asm__ ("d0") = Rows-1;
+    register int col __asm__ ("d1") = Columns/2-1;
+    register char *lf __asm__ ("a2")=(char *)&fontleft;
+    register char *rf __asm__ ("a3")=(char *)&fontright;
+    register *scrptr __asm__ ("a4")=phys;
+    __asm__ (""
+""
+"rowloop: \n\t"
+"            move.w d1,d7 |number of columns/2 \n"
+""
+"drawline: \n\t"
+"            moveq #0,d2 |clear the whole longword \n\t"
+"            move.b (a0)+,d2 |load 'left' character \n\t"
+"            move.b d2,(a1)+ |write it to realscreen \n\t"
+"            lsl.w #4,d2 |convert to offset into font data \n\t"
+""
+"            moveq #0,d3 |clear the whole longword \n\t"
+"            move.b (a0)+,d3 |load 'right' character \n\t"
+"            move.b d3,(a1)+ |write it to realscreen \n\t"
+"            lsl.w #4,d3 |convert to offset into font data \n\t"
+""
+"            lea (a2,d2.w),a5 \n\t"
+"            lea (a3,d3.w),a6 \n\t"
+""
+"            move.w (a5)+,d4 |load left character and clear right (line 1) \n\t"
+"            or.w (a6)+,d4 |load rigt character (line 1) \n\t"
+"            move.w d4,(a4) |output pair of characters (line 1) \n\t"
+"            move.w (a5)+,d4 |load left character and clear right (line 2) \n\t"
+"            or.w (a6)+,d4 |load rigt character (line 2) \n\t"
+"            move.w d4,(a4) |output pair of characters (line 2) \n\t"
+"            move.w (a5)+,d4 |load left character and clear right (line 3) \n\t"
+"            or.w (a6)+,d4 |load rigt character (line 3) \n\t"
+"            move.w d4,(a4) |output pair of characters (line 3) \n\t"
+"            move.w (a5)+,d4 |load left character and clear right (line 4) \n\t"
+"            or.w (a6)+,d4 |load rigt character (line 4) \n\t"
+"            move.w d4,(a4) |output pair of characters (line 4) \n\t"
+"            move.w (a5)+,d4 |load left character and clear right (line 5) \n\t"
+"            or.w (a6)+,d4 |load rigt character (line 5) \n\t"
+"            move.w d4,(a4) |output pair of characters (line 5) \n\t"
+"            move.w (a5)+,d4 |load left character and clear right (line 6) \n\t"
+"            or.w (a6)+,d4 |load rigt character (line 6) \n\t"
+"            move.w d4,(a4) |output pair of characters (line 6) \n\t"
+"            move.w (a5)+,d4 |load left character and clear right (line 7) \n\t"
+"            or.w (a6)+,d4 |load rigt character (line 7) \n\t"
+"            move.w d4,(a4) |output pair of characters (line 7) \n\t"
+"            move.w (a5)+,d4 |load left character and clear right (line 8) \n\t"
+"            or.w (a6)+,d4 |load rigt character (line 8) \n\t"
+"            move.w d4,(a4) |output pair of characters (line 8) \n\t"
+""
+"            dbra d7,drawline |do the rest of the columns \n\t"
+""
+"            dbra d0,rowloop |do the rest of the lines \n\t"
+"");
+
 }
 
 /*

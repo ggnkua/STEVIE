@@ -2,7 +2,7 @@
 # Makefile for the Atari ST - gcc Compiler
 #
 
-CFLAGS = -O2
+CFLAGS = -O2 -fomit-frame-pointer
 CC = m68k-atari-mint-gcc
 STRIP = m68k-atari-mint-strip
 ODIR = obj
@@ -16,7 +16,8 @@ MACH=	tos.o
 
 _OBJ=	main.o edit.o linefunc.o normal.o cmdline.o hexchars.o \
 	misccmds.o help.o ptrfunc.o search.o alloc.o \
-	mark.o screen.o fileio.o param.o $(MACH)
+	mark.o screen.o fileio.o param.o \
+	regexp.o regsub.o $(MACH)
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 all : stevie.ttp

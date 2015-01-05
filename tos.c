@@ -15,7 +15,12 @@
 
 #include <osbind.h>
 void beep();
-//void remove(char *file);
+
+/*
+ * Physical screen address
+ */
+
+static ULONG *phys;
 
 /*
  * The following buffer is used to work around a bug in TOS. It appears that
@@ -168,45 +173,52 @@ beep()
 		outchar('\007');
 }
 
-/*
- * remove(file) - remove a file
- */
-/*void
-remove(file)
-char *file;
-{
-	Fdelete(file);
-}*/
-
-/*
- * rename(of, nf) - rename existing file 'of' to 'nf'
- */
-//void
-//rename(of, nf)
-//char	*of, *nf;
-//{
-//	Fdelete(nf);		/* if 'nf' exists, remove it */
-//	Frename(0, of, nf);
-//}
-
 void
 windinit()
 {
-	if (Getrez() == 0)
-		Columns = 40;		/* low resolution */
-	else
-		Columns = 80;		/* medium or high */
-
-	P(P_LI) = Rows = 25;
+    /*
+     * TODO: Yeah, this is ugly and will only work with ST resolutions
+     *       (TT at best). It will get replaced with something cleaner
+     *       at some point. But that point isn't now!
+     *       I think the best course of action is to use the cookie
+     *       jar to detect machine and set resolution depending on the
+     *       result. No cookie jar = st medium or st high.
+     */
+    switch (Getrez())
+    {
+        case 0:             /* When we run it from low resolution, set medium instead */
+        {
+            Setscreen(-1L,-1L,1);
+            Columns=80;
+            P(P_LI) = Rows = 25;
+        }
+        break;
+        case 1:
+        {
+            Columns=80;
+            P(P_LI) = Rows = 25;
+        }
+        break;
+        case 2:
+        {
+            Columns=80;
+            P(P_LI) = Rows = 50;
+        }
+        break;
+    }
+    
+    phys=Physbase();
 
 	Cursconf((short)1,(short)0);
-    //(int)xbios(21,1,NULL);
 }
 
 void
 windexit(r)
 int r;
 {
+    /*
+     * TODO: restore resolution here
+     */
 	exit(r);
 }
 
