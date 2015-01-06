@@ -53,6 +53,8 @@ void preshiftfont()
  * Based on the current value of Topchar, transfer a screenfull of
  * stuff from Filemem to Nextscreen, and update Botchar.
  */
+#define	BGND	0
+#define	TEXT	3
 
 static void
 filetonext()
@@ -139,6 +141,8 @@ filetonext()
 		*screenp++ = c;
 		col++;
 	}
+       	Setcolor(BGND, 0xf00);
+
 	/*
 	 * If we didn't hit the end of the file, and we didn't finish
 	 * the last line we were working on, then the line didn't fit.
@@ -451,8 +455,6 @@ updateline()
 void
 updatescreen()
 {
-#define	BGND	0
-#define	TEXT	3
 
 	int	text, bgnd;		/* text and background colors */
 
