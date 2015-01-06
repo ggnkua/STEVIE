@@ -65,7 +65,7 @@ filetonext()
 	register char *nextrow;
 	char extra[16];
 	int nextra = 0;
-	register int c;
+	register char c;
 	int n;
 	int done;
 	int srow;		/* starting row of the current line */
@@ -89,7 +89,7 @@ filetonext()
 		if ( nextra > 0 )
 			c = extra[--nextra];
 		else {
-			c = (unsigned)(0xff & gchar(&memp));
+			c = (unsigned)(gchar(&memp));
 			if (inc(&memp) == -1)
 				done = 1;
 			/* when getting a character from the file, we */
@@ -224,66 +224,69 @@ nexttoscreen()
 void nexttoscreen_fast()
 {
  __asm__ (""
-"           movem.l d0-a6,-(sp) \n\t"
-"           move.l _Nextscreen,a0 \n\t"
-"           move.l _Realscreen,a1 \n\t"
-"           move.l _Rows,d0 \n\t"
-"           move.l _Columns,d1 \n\t"
-"           lsr.w #1,d1 \n\t"
-"           subq.l #1,d0 \n\t"
-"           subq.l #1,d1 \n\t"
-"           lea _fontleft,a2 \n\t"
-"           lea _fontright,a3 \n\t"
-"           move.l _phys,a4  \n"
-"rowloop: \n\t"
-"           move.w d1,d7 |number of columns/2 \n"
+"           movem.l d0-a6,-(sp)                                                        \n\t"
+"           move.l _Nextscreen,a0                                                      \n\t"
+"           move.l _Realscreen,a1                                                      \n\t"
+"           move.l _Rows,d0                                                            \n\t"
+"           move.l _Columns,d1                                                         \n\t"
+"           lsr.w #1,d1                                                                \n\t"
+"           subq.l #1,d0                                                               \n\t"
+"           subq.l #1,d1                                                               \n\t"
+"           lea _fontleft,a2                                                           \n\t"
+"           lea _fontright,a3                                                          \n\t"
+"           move.l _phys,a4                                                            \n"
+"rowloop:                                                                              \n\t"
+"           move.w d1,d7                | number of columns/2                          \n"
 ""
-"drawline: \n\t"
-"           moveq #0,d2 |clear the whole longword \n\t"
-"           move.b (a0)+,d2 |load 'left' character \n\t"
-"           move.b d2,(a1)+ |write it to realscreen \n\t"
-"           lsl.w #4,d2 |convert to offset into font data \n\t"
+"drawline:                                                                             \n\t"
+"           move.w (a0)+,d2             | load 'left' and 'right' characters           \n\t"
+"           cmp.w (a1),d2               | are they the same as previous screen?        \n\t"
+"           beq.s dontdraw              | yep, so skip drawing                         \n\t"
+"           move.w d2,(a1)              | nope, save new characters to realscreen      \n\t"
+"           move.w d2,d3                                                               \n\t"
+"           lsr.w #4,d2                 | convert to offset into left font data        \n\t"
+"           lsl.w #4,d3                 | convert to offset into right font data       \n\t"
+"           and.w #0xff0,d2             | mask off bits we don't want                  \n\t"
+"           and.w #0xff0,d3             | mask off bits we don't want                  \n\t"
 ""
-"           moveq #0,d3 |clear the whole longword \n\t"
-"           move.b (a0)+,d3 |load 'right' character \n\t"
-"           move.b d3,(a1)+ |write it to realscreen \n\t"
-"           lsl.w #4,d3 |convert to offset into font data \n\t"
+"           lea (a2,d2.w),a5                                                           \n\t"
+"           lea (a3,d3.w),a6                                                           \n\t"
 ""
-"           lea (a2,d2.w),a5 \n\t"
-"           lea (a3,d3.w),a6 \n\t"
+"           move.w (a5)+,d4             | load left character and clear right (line 1) \n\t"
+"           or.w (a6)+,d4               | load rigt character (line 1)                 \n\t"
+"           move.w d4,(a4)              | output pair of characters (line 1)           \n\t"
+"           move.w (a5)+,d4             | load left character and clear right (line 2) \n\t"
+"           or.w (a6)+,d4               | load rigt character (line 2)                 \n\t"
+"           move.w d4,1*160(a4)         | output pair of characters (line 2)           \n\t"
+"           move.w (a5)+,d4             | load left character and clear right (line 3) \n\t"
+"           or.w (a6)+,d4               | load rigt character (line 3)                 \n\t"
+"           move.w d4,2*160(a4)         | output pair of characters (line 3)           \n\t"
+"           move.w (a5)+,d4             | load left character and clear right (line 4) \n\t"
+"           or.w (a6)+,d4               | load rigt character (line 4)                 \n\t"
+"           move.w d4,3*160(a4)         | output pair of characters (line 4)           \n\t"
+"           move.w (a5)+,d4             | load left character and clear right (line 5) \n\t"
+"           or.w (a6)+,d4               | load rigt character (line 5)                 \n\t"
+"           move.w d4,4*160(a4)         | output pair of characters (line 5)           \n\t"
+"           move.w (a5)+,d4             | load left character and clear right (line 6) \n\t"
+"           or.w (a6)+,d4               | load rigt character (line 6)                 \n\t"
+"           move.w d4,5*160(a4)         | output pair of characters (line 6)           \n\t"
+"           move.w (a5)+,d4             | load left character and clear right (line 7) \n\t"
+"           or.w (a6)+,d4               | load rigt character (line 7)                 \n\t"
+"           move.w d4,6*160(a4)         | output pair of characters (line 7)           \n\t"
+"           move.w (a5)+,d4             | load left character and clear right (line 8) \n\t"
+"           or.w (a6)+,d4               | load rigt character (line 8)                 \n\t"
+"           move.w d4,7*160(a4)         | output pair of characters (line 8)           \n\t"
 ""
-"           move.w (a5)+,d4 |load left character and clear right (line 1) \n\t"
-"           or.w (a6)+,d4 |load rigt character (line 1) \n\t"
-"           move.w d4,(a4) |output pair of characters (line 1) \n\t"
-"           move.w (a5)+,d4 |load left character and clear right (line 2) \n\t"
-"           or.w (a6)+,d4 |load rigt character (line 2) \n\t"
-"           move.w d4,1*160(a4) |output pair of characters (line 2) \n\t"
-"           move.w (a5)+,d4 |load left character and clear right (line 3) \n\t"
-"           or.w (a6)+,d4 |load rigt character (line 3) \n\t"
-"           move.w d4,2*160(a4) |output pair of characters (line 3) \n\t"
-"           move.w (a5)+,d4 |load left character and clear right (line 4) \n\t"
-"           or.w (a6)+,d4 |load rigt character (line 4) \n\t"
-"           move.w d4,3*160(a4) |output pair of characters (line 4) \n\t"
-"           move.w (a5)+,d4 |load left character and clear right (line 5) \n\t"
-"           or.w (a6)+,d4 |load rigt character (line 5) \n\t"
-"           move.w d4,4*160(a4) |output pair of characters (line 5) \n\t"
-"           move.w (a5)+,d4 |load left character and clear right (line 6) \n\t"
-"           or.w (a6)+,d4 |load rigt character (line 6) \n\t"
-"           move.w d4,5*160(a4) |output pair of characters (line 6) \n\t"
-"           move.w (a5)+,d4 |load left character and clear right (line 7) \n\t"
-"           or.w (a6)+,d4 |load rigt character (line 7) \n\t"
-"           move.w d4,6*160(a4) |output pair of characters (line 7) \n\t"
-"           move.w (a5)+,d4 |load left character and clear right (line 8) \n\t"
-"           or.w (a6)+,d4 |load rigt character (line 8) \n\t"
-"           move.w d4,7*160(a4) |output pair of characters (line 8) \n\t"
+"dontdraw: addq.l #2,a1                 | point to next 2 source characters            \n\t"
 ""
-"           addq.l #4,a4 |point to next 2 characters \n\t"
-"           dbra d7,drawline |do the rest of the columns \n\t"
 ""
-"           lea 160*7(a4),a4 |point to next line \n\t"
-"           dbra d0,rowloop |do the rest of the lines \n\t"
+"           addq.l #4,a4                | point to next 2 characters on screen         \n\t"
+"           dbra d7,drawline            | do the rest of the columns                   \n\t"
 ""
-"           movem.l (sp)+,d0-a6 \n\t"
+"           lea 160*7(a4),a4            | point to next line                           \n\t"
+"           dbra d0,rowloop             | do the rest of the lines                     \n\t"
+""
+"           movem.l (sp)+,d0-a6                                                        \n\t"
 "");
 }
 
@@ -448,9 +451,25 @@ updateline()
 void
 updatescreen()
 {
+#define	BGND	0
+#define	TEXT	3
+
+	int	text, bgnd;		/* text and background colors */
+
+	bgnd = Setcolor(BGND, -1);
+    Vsync();
+
+   	Setcolor(BGND, 0x0ff);
+
 	filetonext();
+
+	Setcolor(BGND, 0x00f);
+
 	//nexttoscreen();
-	nexttoscreen_fast();
+    nexttoscreen_fast();
+
+	Setcolor(BGND, bgnd);
+
 }
 
 void

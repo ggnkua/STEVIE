@@ -154,11 +154,12 @@ vbeep()
 	text = Setcolor(TEXT, -1);
 	bgnd = Setcolor(BGND, -1);
 
+   	Vsync();                    /* short pause */
+
 	Setcolor(TEXT, bgnd);		/* swap colors */
 	Setcolor(BGND, text);
 
-	for (l=0; l < 5000 ;l++)	/* short pause */
-		;
+	Vsync();                    /* short pause */
 
 	Setcolor(TEXT, text);		/* restore colors */
 	Setcolor(BGND, bgnd);
