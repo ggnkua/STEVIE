@@ -115,6 +115,7 @@ extern LPTR *showmatch();
 extern LPTR *fwd_word(LPTR *p, int type);
 extern LPTR *bck_word(LPTR *p, int type);
 extern LPTR *end_word(LPTR *p, int type);
+extern void updatetabstoptable();
 
 extern void *fontright;
 extern void *fontleft;

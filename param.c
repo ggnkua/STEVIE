@@ -97,6 +97,17 @@ bool_t	inter;		/* TRUE if called interactively */
 	}
 
 	/*
+	 * Check the bounds for numeric parameters here
+	 */
+	if (P(P_TS) <= 0 || P(P_TS) > 32) {
+		if (inter)
+			emsg("Invalid tab size specified");
+		P(P_TS) = 8;
+		return;
+	}
+    updatetabstoptable();
+
+	/*
 	 * Update the screen in case we changed something like "tabstop"
 	 * or "list" that will change its appearance.
 	 */
@@ -109,16 +120,6 @@ bool_t	inter;		/* TRUE if called interactively */
 		screenclear();
 		updatescreen();
 	}
-	/*
-	 * Check the bounds for numeric parameters here
-	 */
-	if (P(P_TS) <= 0 || P(P_TS) > 32) {
-		if (inter)
-			emsg("Invalid tab size specified");
-		P(P_TS) = 8;
-		return;
-	}
-
 	if (P(P_SS) <= 0 || P(P_SS) > Rows) {
 		if (inter)
 			emsg("Invalid scroll size specified");

@@ -190,6 +190,7 @@ char	*argv[];
 	}
 
 	screenalloc();
+    updatetabstoptable();   //Initial tabstop table
 	filealloc();		/* Initialize Filemem & Fileend */
 
 	screenclear();

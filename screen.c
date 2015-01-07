@@ -48,6 +48,24 @@ void preshiftfont()
 }
 
 /*
+ * Calculate the tab stop table.
+ * The original code used modulo while displaying the screen to calculate
+ * tab stops. Since that adds quite some overhead (IMO :)), the modulo
+ * is replaced with a table that gives the number of spaces to the next
+ * tabstop depending on the tabstop value.
+ * This routine should be called every time the tabstop parameter
+ * is changed.
+ */
+char tabstops[120];     /* I suppose not many texts would have more than
+                           80 columns AND require tabstops ;) */
+void updatetabstoptable()
+{
+    int col;
+    for (col=0;col<120;col++)
+        tabstops[col]=((P(P_TS)-1) - col%P(P_TS));
+}
+
+/*
  * filetonext()
  *
  * Based on the current value of Topchar, transfer a screenfull of
@@ -56,17 +74,22 @@ void preshiftfont()
 #define	BGND	0
 #define	TEXT	3
 
+char spaces[16]="                ";
+
 static void
 filetonext()
 {
 	register int row, col;
 	register char *screenp = Nextscreen;
+    ULONG *longscreenp;
 	LPTR memp;
 	LPTR save;			/* save pos. in case line won't fit */
 	register char *endscreen;
 	register char *nextrow;
 	char extra[16];
-	int nextra = 0;
+    char *pextra;
+	//int nextra = 0;
+	char nextra = 0;
 	register char c;
 	int n;
 	int done;
@@ -89,7 +112,8 @@ filetonext()
 		/* array is reversed. */
 
 		if ( nextra > 0 )
-			c = extra[--nextra];
+			//c = extra[--nextra];
+			c = pextra[--nextra];
 		else {
 			c = (unsigned)(gchar(&memp));
 			if (inc(&memp) == -1)
@@ -98,17 +122,23 @@ filetonext()
 			/* may have to turn it into something else on */
 			/* the way to putting it into 'Nextscreen'. */
 			if ( c == TAB && !P(P_LS) ) {
-				strcpy(extra,"        ");
+				//strcpy(extra,"        ");
+                pextra=spaces;
 				/* tab amount depends on current column */
-				nextra = ((P(P_TS)-1) - col%P(P_TS));
+   	//Setcolor(BGND, 0xf00);
+				//nextra = ((P(P_TS)-1) - col%P(P_TS));
+                nextra=tabstops[col];
+   	//Setcolor(BGND, 0x0ff);
 				c = ' ';
 			}
 			else if ( c == NUL && P(P_LS) ) {
+                pextra=extra;
 				extra[0] = NUL;
 				nextra = 1;
 				c = '$';
 			} else if ( (n = chars[c].ch_size) > 1 ) {
 				char *p;
+                pextra=extra;
 				nextra = 0;
 				p = chars[c].ch_str;
 				/* copy 'ch-str'ing into 'extra' in reverse */
@@ -151,22 +181,29 @@ filetonext()
 		/*
 		 * Clear the rest of the screen and mark the unused lines.
 		 */
+        longscreenp=(ULONG *)&Nextscreen[srow * Columns];
 		screenp = &Nextscreen[srow * Columns];
-		while (screenp < endscreen)
-			*screenp++ = ' ';
+		while ((char *)longscreenp < endscreen)
+			*longscreenp++ = 0x20202020; //4 spaces
 		for (; srow < (Rows-1) ;srow++)
-			Nextscreen[srow * Columns] = '@';
+        {
+			*screenp = '@';
+            screenp=screenp+Columns;
+        }
 		*Botchar = save;
 		return;
 	}
 	/* make sure the rest of the screen is blank */
-	while ( screenp < endscreen )
-		*screenp++ = ' ';
+    longscreenp=(ULONG *)screenp;
+	while ( (char *)longscreenp < endscreen )
+		*longscreenp++ = 0x20202020; //4 spaces
 	/* put '~'s on rows that aren't part of the file. */
 	if ( col != 0 )
 		row++;
+    screenp=&Nextscreen[row*Columns];
 	while ( row < Rows ) {
-		Nextscreen[row*Columns] = '~';
+		*screenp = '~';
+        screenp=screenp+Columns;
 		row++;
 	}
 	if (done)	/* we hit the end of the file */
@@ -344,7 +381,9 @@ lfiletonext()
 			if ( c == TAB && !P(P_LS) ) {
 				strcpy(extra,"        ");
 				/* tab amount depends on current column */
+   	Setcolor(BGND, 0xf00);
 				nextra = ((P(P_TS)-1) - col%P(P_TS));
+   	Setcolor(BGND, 0x0ff);
 				c = ' ';
 			} else if ( c == NUL && P(P_LS) ) {
 				extra[0] = NUL;

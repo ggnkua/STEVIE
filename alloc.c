@@ -45,8 +45,8 @@ screenalloc()
 	if (Nextscreen != NULL)
 		free(Nextscreen);
 
-	Realscreen = malloc((unsigned)(Rows*Columns));
-	Nextscreen = malloc((unsigned)(Rows*Columns));
+	Realscreen = malloc((unsigned)(Rows*Columns))+4; //+4 = Protection against naughty stuff
+	Nextscreen = malloc((unsigned)(Rows*Columns))+4; //     we do in filetonext()
 }
 
 /*
