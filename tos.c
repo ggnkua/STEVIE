@@ -154,24 +154,24 @@ vbeep()
 	text = Setcolor(TEXT, -1);
 	bgnd = Setcolor(BGND, -1);
 
-   	Vsync();                    /* short pause */
+Vsync();                    /* short pause */
 
-	Setcolor(TEXT, bgnd);		/* swap colors */
-	Setcolor(BGND, text);
+Setcolor(TEXT, bgnd);		/* swap colors */
+Setcolor(BGND, text);
 
-	Vsync();                    /* short pause */
+Vsync();                    /* short pause */
 
-	Setcolor(TEXT, text);		/* restore colors */
-	Setcolor(BGND, bgnd);
+Setcolor(TEXT, text);		/* restore colors */
+Setcolor(BGND, bgnd);
 }
 
 void
 beep()
 {
-	if (P(P_VB))
-		vbeep();
-	else
-		outchar('\007');
+    if (P(P_VB))
+        vbeep();
+    else
+        outchar('\007');
 }
 
 void
@@ -187,30 +187,30 @@ windinit()
      */
     switch (Getrez())
     {
-        case 0:             /* When we run it from low resolution, set medium instead */
-        {
-            Setscreen(-1L,-1L,1);
-            Columns=80;
-            P(P_LI) = Rows = 25;
-        }
-        break;
-        case 1:
-        {
-            Columns=80;
-            P(P_LI) = Rows = 25;
-        }
-        break;
-        case 2:
-        {
-            Columns=80;
-            P(P_LI) = Rows = 50;
-        }
-        break;
+    case 0:             /* When we run it from low resolution, set medium instead */
+    {
+        Setscreen(-1L, -1L, 1);
+        Columns = 80;
+        P(P_LI) = Rows = 25;
     }
-    
-    phys=Physbase();
+    break;
+    case 1:
+    {
+        Columns = 80;
+        P(P_LI) = Rows = 25;
+    }
+    break;
+    case 2:
+    {
+        Columns = 80;
+        P(P_LI) = Rows = 50;
+    }
+    break;
+    }
 
-	Cursconf((short)1,(short)0);
+    phys = Physbase();
+
+    Cursconf((short)1, (short)0);
 }
 
 void
@@ -220,16 +220,16 @@ int r;
     /*
      * TODO: restore resolution here
      */
-	exit(r);
+    exit(r);
 }
 
 void
 windgoto(r, c)
 int	r, c;
 {
-	outstr("\033Y");
-	outchar(r + 040);
-	outchar(c + 040);
+    outstr("\033Y");
+    outchar(r + 040);
+    outchar(c + 040);
 }
 
 /*
@@ -240,20 +240,20 @@ void
 sleep(n)
 int n;
 {
-	int k;
+    int k;
 
-	k = Tgettime();
-	while ( Tgettime() <= k+n )
-		;
+    k = Tgettime();
+    while ( Tgettime() <= k + n )
+        ;
 }
 
 void
 delay()
 {
-	long	n;
+    long	n;
 
-	for (n = 0; n < 8000 ;n++)
-		;
+    for (n = 0; n < 8000 ; n++)
+        ;
 }
 
 FILE *
@@ -261,10 +261,11 @@ fopenb(fname, mode)
 char	*fname;
 char	*mode;
 {
-	char	modestr[10];
+    char	modestr[10];
 
-	sprintf(modestr, "b%s", mode);
+    sprintf(modestr, "b%s", mode);
 
-	return fopen(fname, modestr);
+    return fopen(fname, modestr);
 }
+
 

@@ -86,153 +86,178 @@ void stuffnum(int n);
 static void
 usage()
 {
-	fprintf(stderr, "usage: stevie [file ...]\n");
-	fprintf(stderr, "       stevie -t tag\n");
-	fprintf(stderr, "       stevie +[num] file\n");
-	fprintf(stderr, "       stevie +/pat  file\n");
-	exit(1);
+    fprintf(stderr, "usage: stevie [file ...]\n");
+    fprintf(stderr, "       stevie -t tag\n");
+    fprintf(stderr, "       stevie +[num] file\n");
+    fprintf(stderr, "       stevie +/pat  file\n");
+    exit(1);
 }
 
-main(argc,argv)
+main(argc, argv)
 int	argc;
 char	*argv[];
 {
-	char	*initstr, *getenv();	/* init string from the environment */
-	char	*tag = NULL;		/* tag from command line */
-	char	*pat = NULL;		/* pattern from command line */
-	int	line = -1;		/* line number from command line */
+    char	*initstr, *getenv();	/* init string from the environment */
+    char	*tag = NULL;		/* tag from command line */
+    char	*pat = NULL;		/* pattern from command line */
+    int	line = -1;		/* line number from command line */
 
-	/*
-	 * Process the command line arguments.
-	 */
-	if (argc > 1) {
-		switch (argv[1][0]) {
-		
-		case '-':			/* -t tag */
-			if (argv[1][1] != 't')
-				usage();
+    /*
+     * Process the command line arguments.
+     */
+    if (argc > 1)
+    {
+        switch (argv[1][0])
+        {
 
-			if (argv[2] == NULL)
-				usage();
+        case '-':			/* -t tag */
+            if (argv[1][1] != 't')
+                usage();
 
-			Filename = NULL;
-			tag = argv[2];
-			numfiles = 1;
-			break;
+            if (argv[2] == NULL)
+                usage();
 
-		case '+':			/* +n or +/pat */
-			if (argv[1][1] == '/') {
-				if (argv[2] == NULL)
-					usage();
-				Filename = strsave(argv[2]);
-				pat = &(argv[1][1]);
-				numfiles = 1;
+            Filename = NULL;
+            tag = argv[2];
+            numfiles = 1;
+            break;
 
-			} else if (isdigit(argv[1][1]) || argv[1][1] == NUL) {
-				if (argv[2] == NULL)
-					usage();
-				Filename = strsave(argv[2]);
-				numfiles = 1;
+        case '+':			/* +n or +/pat */
+            if (argv[1][1] == '/')
+            {
+                if (argv[2] == NULL)
+                    usage();
+                Filename = strsave(argv[2]);
+                pat = &(argv[1][1]);
+                numfiles = 1;
 
-				line = (isdigit(argv[1][1])) ?
-					atoi(&(argv[1][1])) : 0;
-			} else
-				usage();
+            }
+            else if (isdigit(argv[1][1]) || argv[1][1] == NUL)
+            {
+                if (argv[2] == NULL)
+                    usage();
+                Filename = strsave(argv[2]);
+                numfiles = 1;
 
-			break;
+                line = (isdigit(argv[1][1])) ?
+                       atoi(&(argv[1][1])) : 0;
+            }
+            else
+                usage();
 
-		default:			/* must be a file name */
-			Filename = strsave(argv[1]);
-			files = &(argv[1]);
-			numfiles = argc - 1;
-			break;
-		}
-	} else {
-		Filename = NULL;
-		numfiles = 1;
-	}
-	curfile = 0;
+            break;
+
+        default:			/* must be a file name */
+            Filename = strsave(argv[1]);
+            files = &(argv[1]);
+            numfiles = argc - 1;
+            break;
+        }
+    }
+    else
+    {
+        Filename = NULL;
+        numfiles = 1;
+    }
+    curfile = 0;
 
     preshiftfont();
 
-	windinit();
+    windinit();
 
-	/*
-	 * Allocate LPTR structures for all the various position pointers
-	 */
-	if ((Filemem = (LPTR *) malloc(sizeof(LPTR))) == NULL) {
-		fprintf(stderr, "Can't allocate data structures\n");
-		windexit(0);
-	}
-	if ((Fileend = (LPTR *) malloc(sizeof(LPTR))) == NULL) {
-		fprintf(stderr, "Can't allocate data structures\n");
-		windexit(0);
-	}
-	if ((Topchar = (LPTR *) malloc(sizeof(LPTR))) == NULL) {
-		fprintf(stderr, "Can't allocate data structures\n");
-		windexit(0);
-	}
-	if ((Botchar = (LPTR *) malloc(sizeof(LPTR))) == NULL) {
-		fprintf(stderr, "Can't allocate data structures\n");
-		windexit(0);
-	}
-	if ((Curschar = (LPTR *) malloc(sizeof(LPTR))) == NULL) {
-		fprintf(stderr, "Can't allocate data structures\n");
-		windexit(0);
-	}
-	if ((Insstart = (LPTR *) malloc(sizeof(LPTR))) == NULL) {
-		fprintf(stderr, "Can't allocate data structures\n");
-		windexit(0);
-	}
-	if ((Uncurschar = (LPTR *) malloc(sizeof(LPTR))) == NULL) {
-		fprintf(stderr, "Can't allocate data structures\n");
-		windexit(0);
-	}
+    /*
+     * Allocate LPTR structures for all the various position pointers
+     */
+    if ((Filemem = (LPTR *) malloc(sizeof(LPTR))) == NULL)
+    {
+        fprintf(stderr, "Can't allocate data structures\n");
+        windexit(0);
+    }
+    if ((Fileend = (LPTR *) malloc(sizeof(LPTR))) == NULL)
+    {
+        fprintf(stderr, "Can't allocate data structures\n");
+        windexit(0);
+    }
+    if ((Topchar = (LPTR *) malloc(sizeof(LPTR))) == NULL)
+    {
+        fprintf(stderr, "Can't allocate data structures\n");
+        windexit(0);
+    }
+    if ((Botchar = (LPTR *) malloc(sizeof(LPTR))) == NULL)
+    {
+        fprintf(stderr, "Can't allocate data structures\n");
+        windexit(0);
+    }
+    if ((Curschar = (LPTR *) malloc(sizeof(LPTR))) == NULL)
+    {
+        fprintf(stderr, "Can't allocate data structures\n");
+        windexit(0);
+    }
+    if ((Insstart = (LPTR *) malloc(sizeof(LPTR))) == NULL)
+    {
+        fprintf(stderr, "Can't allocate data structures\n");
+        windexit(0);
+    }
+    if ((Uncurschar = (LPTR *) malloc(sizeof(LPTR))) == NULL)
+    {
+        fprintf(stderr, "Can't allocate data structures\n");
+        windexit(0);
+    }
 
-	screenalloc();
+    screenalloc();
     updatetabstoptable();   //Initial tabstop table
-	filealloc();		/* Initialize Filemem & Fileend */
+    filealloc();		/* Initialize Filemem & Fileend */
 
-	screenclear();
+    screenclear();
 
-	if ((initstr = getenv("EXINIT")) != NULL) {
-		char *lp, buf[128];
+    if ((initstr = getenv("EXINIT")) != NULL)
+    {
+        char *lp, buf[128];
 
-		if ((lp = getenv("LINES")) != NULL) {
-			sprintf(buf, "%s lines=%s", initstr, lp);
-			readcmdline(':', buf);
-		} else
-			readcmdline(':', initstr);
-	}
+        if ((lp = getenv("LINES")) != NULL)
+        {
+            sprintf(buf, "%s lines=%s", initstr, lp);
+            readcmdline(':', buf);
+        }
+        else
+            readcmdline(':', initstr);
+    }
 
-	if (Filename != NULL) {
-		if (readfile(Filename, Filemem, FALSE))
-			filemess("[New File]");
-	} else
-		msg("Empty Buffer");
+    if (Filename != NULL)
+    {
+        if (readfile(Filename, Filemem, FALSE))
+            filemess("[New File]");
+    }
+    else
+        msg("Empty Buffer");
 
-	setpcmark();
+    setpcmark();
 
-	updatescreen();
-	
-	if (tag) {
-		stuffin(":ta ");
-		stuffin(tag);
-		stuffin("\n");
+    updatescreen();
 
-	} else if (pat) {
-		stuffin(pat);
-		stuffin("\n");
+    if (tag)
+    {
+        stuffin(":ta ");
+        stuffin(tag);
+        stuffin("\n");
 
-	} else if (line >= 0) {
-		if (line > 0)
-			stuffnum(line);
-		stuffin("G");
-	}
+    }
+    else if (pat)
+    {
+        stuffin(pat);
+        stuffin("\n");
 
-	edit();
+    }
+    else if (line >= 0)
+    {
+        if (line > 0)
+            stuffnum(line);
+        stuffin("G");
+    }
 
-	windexit(0);
+    edit();
+
+    windexit(0);
 }
 
 #define	RBSIZE	1280		/* should be a little bigger than YBSIZE */
@@ -243,63 +268,67 @@ void
 stuffin(s)
 char *s;
 {
-	if ( getcnext == NULL ) {
-		strcpy(getcbuff,s);
-		getcnext = getcbuff;
-	} else
-		strcat(getcbuff,s);
+    if ( getcnext == NULL )
+    {
+        strcpy(getcbuff, s);
+        getcnext = getcbuff;
+    }
+    else
+        strcat(getcbuff, s);
 }
 
 void
 stuffnum(n)
 int	n;
 {
-	char	buf[32];
+    char	buf[32];
 
-	sprintf(buf, "%d", n);
-	stuffin(buf);
+    sprintf(buf, "%d", n);
+    stuffin(buf);
 }
 
 void
-addtobuff(s,c1,c2,c3,c4,c5,c6)
+addtobuff(s, c1, c2, c3, c4, c5, c6)
 char *s;
 char c1, c2, c3, c4, c5, c6;
 {
-	char *p = s;
-	if ( (*p++ = c1) == NUL )
-		return;
-	if ( (*p++ = c2) == NUL )
-		return;
-	if ( (*p++ = c3) == NUL )
-		return;
-	if ( (*p++ = c4) == NUL )
-		return;
-	if ( (*p++ = c5) == NUL )
-		return;
-	if ( (*p++ = c6) == NUL )
-		return;
+    char *p = s;
+    if ( (*p++ = c1) == NUL )
+        return;
+    if ( (*p++ = c2) == NUL )
+        return;
+    if ( (*p++ = c3) == NUL )
+        return;
+    if ( (*p++ = c4) == NUL )
+        return;
+    if ( (*p++ = c5) == NUL )
+        return;
+    if ( (*p++ = c6) == NUL )
+        return;
 }
 
 int
 vgetc()
 {
-	if ( getcnext != NULL ) {
-		int nextc = *getcnext++;
-		if ( *getcnext == NUL ) {
-			*getcbuff = NUL;
-			getcnext = NULL;
-		}
-		return(nextc);
-	}
-	return(inchar());
+    if ( getcnext != NULL )
+    {
+        int nextc = *getcnext++;
+        if ( *getcnext == NUL )
+        {
+            *getcbuff = NUL;
+            getcnext = NULL;
+        }
+        return(nextc);
+    }
+    return(inchar());
 }
 
 int
 vpeekc()
 {
-	if ( getcnext != NULL )
-		return(*getcnext);
-	return(-1);
+    if ( getcnext != NULL )
+        return(*getcnext);
+    return(-1);
 }
 
 /*
@@ -311,5 +340,6 @@ vpeekc()
 bool_t
 anyinput()
 {
-	return (getcnext != NULL);
+    return (getcnext != NULL);
 }
+

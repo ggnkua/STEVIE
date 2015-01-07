@@ -21,19 +21,14 @@
 #define WORDSEP " \t\n()[]{},;:'\"-="
 #define SLOP 512
 
-typedef int bool_t;
-typedef unsigned short UWORD;
-typedef short WORD;
-typedef unsigned int ULONG;
-typedef short LONG;
-typedef unsigned char UBYTE;
-typedef char BYTE;
 #define TRUE 1
 #define FALSE 0
 #define LINEINC 1
 
 #define CHANGED Changed=1
 #define UNCHANGED Changed=0
+
+#define LINEOF(x) x->linep->num
 
 #ifndef NULL
 #define NULL 0
@@ -47,6 +42,14 @@ typedef char BYTE;
 #include <stdlib.h>
 #include <string.h>
 #include <osbind.h>
+
+typedef int bool_t;
+typedef unsigned short UWORD;
+typedef short WORD;
+typedef unsigned int ULONG;
+typedef short LONG;
+typedef unsigned char UBYTE;
+typedef char BYTE;
 
 struct charinfo {
 	char ch_size;
@@ -68,10 +71,7 @@ struct	lptr {
 typedef	struct line	LINE;
 typedef	struct lptr	LPTR; 
 
-#define LINEOF(x) x->linep->num
-
 extern struct charinfo chars[];
-
 extern int State;
 extern int Rows;
 extern int Columns;
@@ -79,7 +79,6 @@ extern char *Realscreen;
 extern char *Nextscreen;
 extern char *Filename;
 extern LPTR *Filemem;;
-//extern char *Filemax;
 extern LPTR *Fileend;
 extern LPTR *Topchar;
 extern LPTR *Botchar;
@@ -89,7 +88,6 @@ extern int Cursrow, Curscol, Cursvcol;
 extern int Prenum;
 extern bool_t Debug;
 extern bool_t Changed;
-//extern int Binary;
 extern char Redobuff[], Undobuff[], Insbuff[];
 extern LPTR *Uncurschar;
 extern char *Insptr;
@@ -97,8 +95,11 @@ extern int Ninsert, Undelchars;
 extern bool_t set_want_col;
 extern int Curswant;
 extern bool_t did_ai;
+extern void *fontright;
+extern void *fontleft;
+extern ULONG *phys;
 
-//char *strchr(), *strsave(), *alloc(), *strcpy();
+/* Global functions */
 
 extern char *strsave(char *string);
 extern char *alloc(unsigned size); 
@@ -106,8 +107,6 @@ extern LPTR *nextline(LPTR *curr);
 extern LPTR *prevline(LPTR *curr); 
 extern LPTR *coladvance(LPTR *p, int col); 
 static LPTR *ssearch(int dir, char *str);
-//extern LPTR *bcksearch(char *str);
-//extern LPTR *fwdsearch(char *str);
 extern LPTR *getmark(char c); 
 extern LPTR *gotoline(int n); 
 extern LINE *newline(int nchars);
@@ -117,10 +116,7 @@ extern LPTR *bck_word(LPTR *p, int type);
 extern LPTR *end_word(LPTR *p, int type);
 extern void updatetabstoptable();
 
-extern void *fontright;
-extern void *fontleft;
-
-extern ULONG *phys;
+/* Inlined functions */
 
 /*
  * gchar(lp) - get the character at position "lp"
@@ -157,5 +153,9 @@ register LPTR	*lp;
 
 	return -1;
 }
+
+
+
+
 
 

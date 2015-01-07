@@ -1294,22 +1294,23 @@ dojoin()
 		 * Delete leading white space on the joined line
 		 * and insert a single space.
 		 */
-		while (gchar(Curschar) == ' ' || gchar(Curschar) == TAB)
-			delchar(TRUE);
-		inschar(' ');
-	}
+while (gchar(Curschar) == ' ' || gchar(Curschar) == TAB)
+    delchar(TRUE);
+inschar(' ');
+}
 
-	return TRUE;
+return TRUE;
 }
 
 char *
 mkstr(c)
 char	c;
 {
-	static	char	s[2];
+    static	char	s[2];
 
-	s[0] = c;
-	s[1] = NUL;
+    s[0] = c;
+    s[1] = NUL;
 
-	return s;
+    return s;
 }
+

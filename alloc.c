@@ -46,7 +46,7 @@ screenalloc()
 		free(Nextscreen);
 
 	Realscreen = malloc((unsigned)(Rows*Columns))+4; //+4 = Protection against naughty stuff
-	Nextscreen = malloc((unsigned)(Rows*Columns))+4; //     we do in filetonext()
+Nextscreen = malloc((unsigned)(Rows*Columns)) + 4; //     we do in filetonext()
 }
 
 /*
@@ -57,19 +57,19 @@ LINE *
 newline(nchars)
 int	nchars;
 {
-	register LINE	*l;
+    register LINE	*l;
 
-	if ((l = (LINE *) alloc(sizeof(LINE))) == NULL)
-		return (LINE *) NULL;
+    if ((l = (LINE *) alloc(sizeof(LINE))) == NULL)
+        return (LINE *) NULL;
 
-	l->s = alloc(nchars);		/* the line is empty */
-	l->s[0] = NUL;
-	l->size = nchars;
+    l->s = alloc(nchars);		/* the line is empty */
+    l->s[0] = NUL;
+    l->size = nchars;
 
-	l->prev = (LINE *) NULL;	/* should be initialized by caller */
-	l->next = (LINE *) NULL;
+    l->prev = (LINE *) NULL;	/* should be initialized by caller */
+    l->next = (LINE *) NULL;
 
-	return l;
+    return l;
 }
 
 /*
@@ -78,27 +78,29 @@ int	nchars;
 void
 filealloc()
 {
-	if ((Filemem->linep = newline(1)) == NULL) {
-		fprintf(stderr,"Unable to allocate file memory!\n");
-		exit(1);
-	}
-	if ((Fileend->linep = newline(1)) == NULL) {
-		fprintf(stderr,"Unable to allocate file memory!\n");
-		exit(1);
-	}
-	Filemem->index = 0;
-	Fileend->index = 0;
+    if ((Filemem->linep = newline(1)) == NULL)
+    {
+        fprintf(stderr, "Unable to allocate file memory!\n");
+        exit(1);
+    }
+    if ((Fileend->linep = newline(1)) == NULL)
+    {
+        fprintf(stderr, "Unable to allocate file memory!\n");
+        exit(1);
+    }
+    Filemem->index = 0;
+    Fileend->index = 0;
 
-	Filemem->linep->next = Fileend->linep;
-	Fileend->linep->prev = Filemem->linep;
+    Filemem->linep->next = Fileend->linep;
+    Fileend->linep->prev = Filemem->linep;
 
-	*Curschar = *Filemem;
-	*Topchar  = *Filemem;
+    *Curschar = *Filemem;
+    *Topchar  = *Filemem;
 
-	Filemem->linep->num = 0;
-	Fileend->linep->num = 0xffff;
+    Filemem->linep->num = 0;
+    Fileend->linep->num = 0xffff;
 
-	clrall();		/* clear all marks */
+    clrall();		/* clear all marks */
 }
 
 /*
@@ -109,18 +111,19 @@ filealloc()
 void
 freeall()
 {
-	LINE	*lp, *xlp;
+    LINE	*lp, *xlp;
 
-	for (lp = Filemem->linep; lp != NULL ;lp = xlp) {
-		if (lp->s != NULL)
-			free(lp->s);
-		xlp = lp->next;
-		free(lp);
-	}
+    for (lp = Filemem->linep; lp != NULL ; lp = xlp)
+    {
+        if (lp->s != NULL)
+            free(lp->s);
+        xlp = lp->next;
+        free(lp);
+    }
 
-	Curschar->linep = NULL;		/* clear pointers */
-	Filemem->linep = NULL;
-	Fileend->linep = NULL;
+    Curschar->linep = NULL;		/* clear pointers */
+    Filemem->linep = NULL;
+    Fileend->linep = NULL;
 }
 
 /*
@@ -129,7 +132,7 @@ freeall()
 bool_t
 buf1line()
 {
-	return (Filemem->linep->next == Fileend->linep);
+    return (Filemem->linep->next == Fileend->linep);
 }
 
 /*
@@ -138,7 +141,7 @@ buf1line()
 bool_t
 bufempty()
 {
-	return (buf1line() && Filemem->linep->s[0] == NUL);
+    return (buf1line() && Filemem->linep->s[0] == NUL);
 }
 
 /*
@@ -147,7 +150,7 @@ bufempty()
 bool_t
 lineempty()
 {
-	return (Curschar->linep->s[0] == NUL);
+    return (Curschar->linep->s[0] == NUL);
 }
 
 /*
@@ -160,7 +163,7 @@ bool_t
 endofline(p)
 register LPTR	*p;
 {
-	return (p->linep->s[p->index] == NUL || p->linep->s[p->index+1] == NUL);
+    return (p->linep->s[p->index] == NUL || p->linep->s[p->index + 1] == NUL);
 }
 /*
  * canincrease(n) - returns TRUE if the current line can be increased 'n' bytes
@@ -173,29 +176,31 @@ bool_t
 canincrease(n)
 register int	n;
 {
-	register int	nsize;
-	register char	*s;		/* pointer to new space */
+    register int	nsize;
+    register char	*s;		/* pointer to new space */
 
-	nsize = strlen(Curschar->linep->s) + 1 + n;	/* size required */
+    nsize = strlen(Curschar->linep->s) + 1 + n;	/* size required */
 
-	if (nsize <= Curschar->linep->size)
-		return TRUE;
+    if (nsize <= Curschar->linep->size)
+        return TRUE;
 
-	/*
-	 * Need to allocate more space for the string. Allow some extra
-	 * space on the assumption that we may need it soon. This avoids
-	 * excessive numbers of calls to malloc while entering new text.
-	 */
-	if ((s = alloc(nsize + SLOP)) == NULL) {
-		emsg("Can't add anything, file is too big!");
-		State = NORMAL;
-		return FALSE;
-	}
+    /*
+     * Need to allocate more space for the string. Allow some extra
+     * space on the assumption that we may need it soon. This avoids
+     * excessive numbers of calls to malloc while entering new text.
+     */
+    if ((s = alloc(nsize + SLOP)) == NULL)
+    {
+        emsg("Can't add anything, file is too big!");
+        State = NORMAL;
+        return FALSE;
+    }
 
-	Curschar->linep->size = nsize + SLOP;
-	strcpy(s, Curschar->linep->s);
-	free(Curschar->linep->s);
-	Curschar->linep->s = s;
-	
-	return TRUE;
+    Curschar->linep->size = nsize + SLOP;
+    strcpy(s, Curschar->linep->s);
+    free(Curschar->linep->s);
+    Curschar->linep->s = s;
+
+    return TRUE;
 }
+

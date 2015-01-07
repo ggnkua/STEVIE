@@ -594,59 +594,63 @@ LPTR	*p;
 int	type;
 {
 	static	LPTR	pos;
-	int	sclass = cls(gchar(p));		/* starting class */
+int	sclass = cls(gchar(p));		/* starting class */
 
-	pos = *p;
+pos = *p;
 
-	stype = type;
+stype = type;
 
-	if (dec(&pos) == -1)
-		return NULL;
+if (dec(&pos) == -1)
+    return NULL;
 
-	/*
-	 * If we're in the middle of a word, we just have to
-	 * back up to the start of it.
-	 */
-	if (cls(gchar(&pos)) == sclass && sclass != 0) {
-		/*
-		 * Move backward to start of the current word
-		 */
-		while (cls(gchar(&pos)) == sclass) {
-			if (dec(&pos) == -1)
-				return NULL;
-		}
-		inc(&pos);			/* overshot - forward one */
-		return &pos;
-	}
+/*
+ * If we're in the middle of a word, we just have to
+ * back up to the start of it.
+ */
+if (cls(gchar(&pos)) == sclass && sclass != 0)
+{
+    /*
+     * Move backward to start of the current word
+     */
+    while (cls(gchar(&pos)) == sclass)
+    {
+        if (dec(&pos) == -1)
+            return NULL;
+    }
+    inc(&pos);			/* overshot - forward one */
+    return &pos;
+}
 
-	/*
-	 * We were at the start of a word. Go back to the start
-	 * of the prior word.
-	 */
+/*
+ * We were at the start of a word. Go back to the start
+ * of the prior word.
+ */
 
-	while (cls(gchar(&pos)) == 0) {		/* skip any white space */
-		/*
-		 * We'll stop if we land on a blank line
-		 */
-		if (pos.index == 0 && pos.linep->s[0] == NUL)
-			return &pos;
+while (cls(gchar(&pos)) == 0)  		/* skip any white space */
+{
+    /*
+     * We'll stop if we land on a blank line
+     */
+    if (pos.index == 0 && pos.linep->s[0] == NUL)
+        return &pos;
 
-		if (dec(&pos) == -1)
-			return NULL;
-	}
+    if (dec(&pos) == -1)
+        return NULL;
+}
 
-	sclass = cls(gchar(&pos));
+sclass = cls(gchar(&pos));
 
-	/*
-	 * Move backward to start of this word.
-	 */
-	while (cls(gchar(&pos)) == sclass) {
-		if (dec(&pos) == -1)
-			return NULL;
-	}
-	inc(&pos);			/* overshot - forward one */
+/*
+ * Move backward to start of this word.
+ */
+while (cls(gchar(&pos)) == sclass)
+{
+    if (dec(&pos) == -1)
+        return NULL;
+}
+inc(&pos);			/* overshot - forward one */
 
-	return &pos;
+return &pos;
 }
 
 /*
@@ -666,52 +670,57 @@ end_word(p, type)
 LPTR	*p;
 int	type;
 {
-	static	LPTR	pos;
-	int	sclass = cls(gchar(p));		/* starting class */
+    static	LPTR	pos;
+    int	sclass = cls(gchar(p));		/* starting class */
 
-	pos = *p;
+    pos = *p;
 
-	stype = type;
+    stype = type;
 
-	if (inc(&pos) == -1)
-		return NULL;
+    if (inc(&pos) == -1)
+        return NULL;
 
-	/*
-	 * If we're in the middle of a word, we just have to
-	 * move to the end of it.
-	 */
-	if (cls(gchar(&pos)) == sclass && sclass != 0) {
-		/*
-		 * Move forward to end of the current word
-		 */
-		while (cls(gchar(&pos)) == sclass) {
-			if (inc(&pos) == -1)
-				return NULL;
-		}
-		dec(&pos);			/* overshot - forward one */
-		return &pos;
-	}
+    /*
+     * If we're in the middle of a word, we just have to
+     * move to the end of it.
+     */
+    if (cls(gchar(&pos)) == sclass && sclass != 0)
+    {
+        /*
+         * Move forward to end of the current word
+         */
+        while (cls(gchar(&pos)) == sclass)
+        {
+            if (inc(&pos) == -1)
+                return NULL;
+        }
+        dec(&pos);			/* overshot - forward one */
+        return &pos;
+    }
 
-	/*
-	 * We were at the end of a word. Go to the end
-	 * of the next word.
-	 */
+    /*
+     * We were at the end of a word. Go to the end
+     * of the next word.
+     */
 
-	while (cls(gchar(&pos)) == 0) {		/* skip any white space */
-		if (inc(&pos) == -1)
-			return NULL;
-	}
+    while (cls(gchar(&pos)) == 0)  		/* skip any white space */
+    {
+        if (inc(&pos) == -1)
+            return NULL;
+    }
 
-	sclass = cls(gchar(&pos));
+    sclass = cls(gchar(&pos));
 
-	/*
-	 * Move forward to end of this word.
-	 */
-	while (cls(gchar(&pos)) == sclass) {
-		if (inc(&pos) == -1)
-			return NULL;
-	}
-	dec(&pos);			/* overshot - forward one */
+    /*
+     * Move forward to end of this word.
+     */
+    while (cls(gchar(&pos)) == sclass)
+    {
+        if (inc(&pos) == -1)
+            return NULL;
+    }
+    dec(&pos);			/* overshot - forward one */
 
-	return &pos;
+    return &pos;
 }
+

@@ -154,85 +154,91 @@ int c;
 {
 	char *p;
 
-	if ( ! anyinput() ) {
-		inschar(c);
-		*Insptr++ = c;
-		Ninsert++;
-		/*
-		 * The following kludge avoids overflowing the statically
-		 * allocated insert buffer. Just dump the user back into
-		 * command mode, and print a message.
-		 */
-		if (Insptr+10 >= &Insbuff[1024]) {
-			stuffin(mkstr(ESC));
-			emsg("No buffer space - returning to command mode");
-			sleep(2);
-		}
-	}
-	else {
-		/* If there's any pending input, grab it all at once. */
-		p = Insptr;
-		*Insptr++ = c;
-		Ninsert++;
-		for (c = vpeekc(); !ISSPECIAL(c) ;c = vpeekc()) {
-			c = vgetc();
-			*Insptr++ = c;
-			Ninsert++;
-		}
-		*Insptr = '\0';
-		insstr(p);
-	}
-	updateline();
+if ( ! anyinput() )
+{
+    inschar(c);
+    *Insptr++ = c;
+    Ninsert++;
+    /*
+     * The following kludge avoids overflowing the statically
+     * allocated insert buffer. Just dump the user back into
+     * command mode, and print a message.
+     */
+    if (Insptr + 10 >= &Insbuff[1024])
+    {
+        stuffin(mkstr(ESC));
+        emsg("No buffer space - returning to command mode");
+        sleep(2);
+    }
+}
+else
+{
+    /* If there's any pending input, grab it all at once. */
+    p = Insptr;
+    *Insptr++ = c;
+    Ninsert++;
+    for (c = vpeekc(); !ISSPECIAL(c) ; c = vpeekc())
+    {
+        c = vgetc();
+        *Insptr++ = c;
+        Ninsert++;
+    }
+    *Insptr = '\0';
+    insstr(p);
+}
+updateline();
 }
 
 void
 getout()
 {
-	windgoto(Rows-1,0);
-	putchar('\r');
-	putchar('\n');
-	windexit(0);
+    windgoto(Rows - 1, 0);
+    putchar('\r');
+    putchar('\n');
+    windexit(0);
 }
 
 void
 scrolldown(nlines)
 int nlines;
 {
-	register LPTR	*p;
-	register int	done = 0;	/* total # of physical lines done */
+    register LPTR	*p;
+    register int	done = 0;	/* total # of physical lines done */
 
-	/* Scroll up 'nlines' lines. */
-	while (nlines--) {
-		if ((p = prevline(Topchar)) == NULL)
-			break;
-		done += plines(p);
-		*Topchar = *p;
-		if (Curschar->linep == Botchar->linep->prev)
-			*Curschar = *prevline(Curschar);
-	}
-	s_ins(0, done);
+    /* Scroll up 'nlines' lines. */
+    while (nlines--)
+    {
+        if ((p = prevline(Topchar)) == NULL)
+            break;
+        done += plines(p);
+        *Topchar = *p;
+        if (Curschar->linep == Botchar->linep->prev)
+            *Curschar = *prevline(Curschar);
+    }
+    s_ins(0, done);
 }
 
 void
 scrollup(nlines)
 int nlines;
 {
-	register LPTR	*p;
-	register int	done = 0;	/* total # of physical lines done */
-	register int	pl;		/* # of plines for the current line */
+    register LPTR	*p;
+    register int	done = 0;	/* total # of physical lines done */
+    register int	pl;		/* # of plines for the current line */
 
-	/* Scroll down 'nlines' lines. */
-	while (nlines--) {
-		pl = plines(Topchar);
-		if ((p = nextline(Topchar)) == NULL)
-			break;
-		done += pl;
-		if (Curschar->linep == Topchar->linep)
-			*Curschar = *p;
-		*Topchar = *p;
+    /* Scroll down 'nlines' lines. */
+    while (nlines--)
+    {
+        pl = plines(Topchar);
+        if ((p = nextline(Topchar)) == NULL)
+            break;
+        done += pl;
+        if (Curschar->linep == Topchar->linep)
+            *Curschar = *p;
+        *Topchar = *p;
 
-	}
-	s_del(0, done);
+    }
+    s_del(0, done);
 }
 
 /*
@@ -248,97 +254,106 @@ int nlines;
 bool_t
 oneright()
 {
-	set_want_col = TRUE;
+    set_want_col = TRUE;
 
-	switch (inc(Curschar)) {
+    switch (inc(Curschar))
+    {
 
-	case 0:
-		return TRUE;
+    case 0:
+        return TRUE;
 
-	case 1:
-		dec(Curschar);		/* crossed a line, so back up */
-		/* fall through */
-	case -1:
-		return FALSE;
-	}
+    case 1:
+        dec(Curschar);		/* crossed a line, so back up */
+    /* fall through */
+    case -1:
+        return FALSE;
+    }
 }
 
 bool_t
 oneleft()
 {
-	set_want_col = TRUE;
+    set_want_col = TRUE;
 
-	switch (dec(Curschar)) {
+    switch (dec(Curschar))
+    {
 
-	case 0:
-		return TRUE;
+    case 0:
+        return TRUE;
 
-	case 1:
-		inc(Curschar);		/* crossed a line, so back up */
-		/* fall through */
-	case -1:
-		return FALSE;
-	}
+    case 1:
+        inc(Curschar);		/* crossed a line, so back up */
+    /* fall through */
+    case -1:
+        return FALSE;
+    }
 }
 
 void
 beginline(flag)
 bool_t	flag;
 {
-	while ( oneleft() )
-		;
-	if (flag) {
-		while (isspace(gchar(Curschar)) && oneright())
-			;
-	}
-	set_want_col = TRUE;
+    while ( oneleft() )
+        ;
+    if (flag)
+    {
+        while (isspace(gchar(Curschar)) && oneright())
+            ;
+    }
+    set_want_col = TRUE;
 }
 
 bool_t
 oneup(n)
 {
-	LPTR p, *np;
-	int k;
+    LPTR p, *np;
+    int k;
 
-	p = *Curschar;
-	for ( k=0; k<n; k++ ) {
-		/* Look for the previous line */
-		if ( (np=prevline(&p)) == NULL ) {
-			/* If we've at least backed up a little .. */
-			if ( k > 0 )
-				break;	/* to update the cursor, etc. */
-			else
-				return FALSE;
-		}
-		p = *np;
-	}
-	*Curschar = p;
-	/* This makes sure Topchar gets updated so the complete line */
-	/* is one the screen. */
-	cursupdate();
-	/* try to advance to the column we want to be at */
-	*Curschar = *coladvance(&p, Curswant);
-	return TRUE;
+    p = *Curschar;
+    for ( k = 0; k < n; k++ )
+    {
+        /* Look for the previous line */
+        if ( (np = prevline(&p)) == NULL )
+        {
+            /* If we've at least backed up a little .. */
+            if ( k > 0 )
+                break;	/* to update the cursor, etc. */
+            else
+                return FALSE;
+        }
+        p = *np;
+    }
+    *Curschar = p;
+    /* This makes sure Topchar gets updated so the complete line */
+    /* is one the screen. */
+    cursupdate();
+    /* try to advance to the column we want to be at */
+    *Curschar = *coladvance(&p, Curswant);
+    return TRUE;
 }
 
 bool_t
 onedown(n)
 {
-	LPTR p, *np;
-	int k;
+    LPTR p, *np;
+    int k;
 
-	p = *Curschar;
-	for ( k=0; k<n; k++ ) {
-		/* Look for the next line */
-		if ( (np=nextline(&p)) == NULL ) {
-			if ( k > 0 )
-				break;
-			else
-				return FALSE;
-		}
-		p = *np;
-	}
-	/* try to advance to the column we want to be at */
-	*Curschar = *coladvance(&p, Curswant);
-	return TRUE;
+    p = *Curschar;
+    for ( k = 0; k < n; k++ )
+    {
+        /* Look for the next line */
+        if ( (np = nextline(&p)) == NULL )
+        {
+            if ( k > 0 )
+                break;
+            else
+                return FALSE;
+        }
+        p = *np;
+    }
+    /* try to advance to the column we want to be at */
+    *Curschar = *coladvance(&p, Curswant);
+    return TRUE;
 }
+
+

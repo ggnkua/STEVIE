@@ -15,9 +15,10 @@
 
 #define	NMARKS	10		/* max. # of marks that can be saved */
 
-struct	mark {
-	char	name;
-	LPTR	pos;
+struct	mark
+{
+    char	name;
+    LPTR	pos;
 };
 
 static	struct	mark	mlist[NMARKS];
@@ -33,33 +34,37 @@ bool_t
 setmark(c)
 char	c;
 {
-	int	i;
+    int	i;
 
-	if (!isalpha(c))
-		return FALSE;
+    if (!isalpha(c))
+        return FALSE;
 
-	/*
-	 * If there is already a mark of this name, then just use the
-	 * existing mark entry.
-	 */
-	for (i=0; i < NMARKS ;i++) {
-		if (mlist[i].name == c) {
-			mlist[i].pos = *Curschar;
-			return TRUE;
-		}
-	}
+    /*
+     * If there is already a mark of this name, then just use the
+     * existing mark entry.
+     */
+    for (i = 0; i < NMARKS ; i++)
+    {
+        if (mlist[i].name == c)
+        {
+            mlist[i].pos = *Curschar;
+            return TRUE;
+        }
+    }
 
-	/*
-	 * There wasn't a mark of the given name, so find a free slot
-	 */
-	for (i=0; i < NMARKS ;i++) {
-		if (mlist[i].name == NUL) {	/* got a free one */
-			mlist[i].name = c;
-			mlist[i].pos = *Curschar;
-			return TRUE;
-		}
-	}
-	return FALSE;
+    /*
+     * There wasn't a mark of the given name, so find a free slot
+     */
+    for (i = 0; i < NMARKS ; i++)
+    {
+        if (mlist[i].name == NUL)  	/* got a free one */
+        {
+            mlist[i].name = c;
+            mlist[i].pos = *Curschar;
+            return TRUE;
+        }
+    }
+    return FALSE;
 }
 
 /*
@@ -68,8 +73,8 @@ char	c;
 void
 setpcmark()
 {
-	pcmark.pos = *Curschar;
-	pcvalid = TRUE;
+    pcmark.pos = *Curschar;
+    pcvalid = TRUE;
 }
 
 /*
@@ -81,16 +86,17 @@ LPTR *
 getmark(c)
 char	c;
 {
-	register int	i;
+    register int	i;
 
-	if (c == '\'' || c == '`')	/* previous context mark */
-		return pcvalid ? &(pcmark.pos) : (LPTR *) NULL;
+    if (c == '\'' || c == '`')	/* previous context mark */
+        return pcvalid ? &(pcmark.pos) : (LPTR *) NULL;
 
-	for (i=0; i < NMARKS ;i++) {
-		if (mlist[i].name == c)
-			return &(mlist[i].pos);
-	}
-	return (LPTR *) NULL;
+    for (i = 0; i < NMARKS ; i++)
+    {
+        if (mlist[i].name == c)
+            return &(mlist[i].pos);
+    }
+    return (LPTR *) NULL;
 }
 
 /*
@@ -101,11 +107,11 @@ char	c;
 void
 clrall()
 {
-	register int	i;
+    register int	i;
 
-	for (i=0; i < NMARKS ;i++)
-		mlist[i].name = NUL;
-	pcvalid = FALSE;
+    for (i = 0; i < NMARKS ; i++)
+        mlist[i].name = NUL;
+    pcvalid = FALSE;
 }
 
 /*
@@ -118,12 +124,14 @@ void
 clrmark(line)
 LINE	*line;
 {
-	register int	i;
+    register int	i;
 
-	for (i=0; i < NMARKS ;i++) {
-		if (mlist[i].pos.linep == line)
-			mlist[i].name = NUL;
-	}
-	if (pcvalid && (pcmark.pos.linep == line))
-		pcvalid = FALSE;
+    for (i = 0; i < NMARKS ; i++)
+    {
+        if (mlist[i].pos.linep == line)
+            mlist[i].name = NUL;
+    }
+    if (pcvalid && (pcmark.pos.linep == line))
+        pcvalid = FALSE;
 }
+

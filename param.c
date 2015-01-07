@@ -18,19 +18,19 @@
 
 struct	param	params[] = {
 
-	{ "tabstop",	"ts",		8,	P_NUM },
-	{ "scroll",	"scroll",	12,	P_NUM },
-	{ "report",	"report",	5,	P_NUM },
-	{ "lines",	"lines",	25,	P_NUM },
+	{ "tabstop",	"ts",		8,	    P_NUM },
+	{ "scroll",     "scroll",	12,	    P_NUM },
+	{ "report",     "report",	5,	    P_NUM },
+	{ "lines",      "lines",	25,	    P_NUM },
 
-	{ "vbell",	"vb",		TRUE,	P_BOOL },
+	{ "vbell",      "vb",		TRUE,	P_BOOL },
 	{ "showmatch",	"sm",		FALSE,	P_BOOL },
 	{ "wrapscan",	"ws",		TRUE,	P_BOOL },
 	{ "errorbells",	"eb",		FALSE,	P_BOOL },
 	{ "showmode",	"mo",		FALSE,	P_BOOL },
-	{ "backup",	"bk",		FALSE,	P_BOOL },
-	{ "return",	"cr",		TRUE,	P_BOOL },
-	{ "list",	"list",		FALSE,	P_BOOL },
+	{ "backup",	    "bk",		FALSE,	P_BOOL },
+	{ "return",	    "cr",		TRUE,	P_BOOL },
+	{ "list",	    "list",		FALSE,	P_BOOL },
 #if 0
 	/* not yet implemented */
 	{ "autoindent",	"ai",		FALSE,	P_BOOL },
@@ -107,63 +107,68 @@ bool_t	inter;		/* TRUE if called interactively */
 	}
     updatetabstoptable();
 
-	/*
-	 * Update the screen in case we changed something like "tabstop"
-	 * or "list" that will change its appearance.
-	 */
-	if (inter)
-		updatescreen();
+/*
+ * Update the screen in case we changed something like "tabstop"
+ * or "list" that will change its appearance.
+ */
+if (inter)
+    updatescreen();
 
-	if (did_lines) {
-		Rows = P(P_LI);
-		screenalloc();		/* allocate new screen buffers */
-		screenclear();
-		updatescreen();
-	}
-	if (P(P_SS) <= 0 || P(P_SS) > Rows) {
-		if (inter)
-			emsg("Invalid scroll size specified");
-		P(P_SS) = 12;
-		return;
-	}
+if (did_lines)
+{
+    Rows = P(P_LI);
+    screenalloc();		/* allocate new screen buffers */
+    screenclear();
+    updatescreen();
+}
+if (P(P_SS) <= 0 || P(P_SS) > Rows)
+{
+    if (inter)
+        emsg("Invalid scroll size specified");
+    P(P_SS) = 12;
+    return;
+}
 
-	/*
-	 * Check for another argument, and call doset() recursively, if
-	 * found. If any argument results in an error, no further
-	 * parameters are processed.
-	 */
-	while (*arg != ' ' && *arg != '\t') {	/* skip to next white space */
-		if (*arg == NUL)
-			return;			/* end of parameter list */
-		arg++;
-	}
-	while (*arg == ' ' || *arg == '\t')	/* skip to next non-white */
-		arg++;
+/*
+ * Check for another argument, and call doset() recursively, if
+ * found. If any argument results in an error, no further
+ * parameters are processed.
+ */
+while (*arg != ' ' && *arg != '\t')  	/* skip to next white space */
+{
+    if (*arg == NUL)
+        return;			/* end of parameter list */
+    arg++;
+}
+while (*arg == ' ' || *arg == '\t')	/* skip to next non-white */
+    arg++;
 
-	if (*arg)
-		doset(arg);	/* recurse on next parameter, if present */
+if (*arg)
+    doset(arg);	/* recurse on next parameter, if present */
 }
 
 static	void
 showparms(all)
 bool_t	all;	/* show ALL parameters */
 {
-	struct	param	*p;
-	char	buf[64];
+    struct	param	*p;
+    char	buf[64];
 
-	gotocmd(TRUE, TRUE, 0);
-	outstr("Parameters:\r\n");
+    gotocmd(TRUE, TRUE, 0);
+    outstr("Parameters:\r\n");
 
-	for (p = &params[0]; p->fullname[0] != NUL ;p++) {
-		if (!all && ((p->flags & P_CHANGED) == 0))
-			continue;
-		if (p->flags & P_BOOL)
-			sprintf(buf, "\t%s%s\r\n",
-				(p->value ? "" : "no"), p->fullname);
-		else
-			sprintf(buf, "\t%s=%d\r\n", p->fullname, p->value);
+    for (p = &params[0]; p->fullname[0] != NUL ; p++)
+    {
+        if (!all && ((p->flags & P_CHANGED) == 0))
+            continue;
+        if (p->flags & P_BOOL)
+            sprintf(buf, "\t%s%s\r\n",
+                    (p->value ? "" : "no"), p->fullname);
+        else
+            sprintf(buf, "\t%s=%d\r\n", p->fullname, p->value);
 
-		outstr(buf);
-	}
-	wait_return();
+        outstr(buf);
+    }
+    wait_return();
 }
+
