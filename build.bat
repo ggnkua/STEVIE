@@ -4,7 +4,7 @@ setlocal EnableDelayedExpansion
 
 set PROJROOT=.
 set PROJNAME=stevie
-set OUTPUT_FOLDER=%PROJROOT%\bin
+set OUTPUT_FOLDER=%PROJROOT%
 rem set STEEMLOG=-DAGT_CONFIG_STEEM_DEBUG
 rem set DEBUGCONSOLE=-DAGT_CONFIG_DEBUG_CONSOLE
 rem set DEBUGRASTERS=-DTIMING_RASTERS_MAIN
@@ -12,7 +12,7 @@ rem set DEBUGRASTERS=-DTIMING_RASTERS_MAIN
 set DEBUG=%STEEMLOG% %DEBUGCONSOLE% %DEBUGRASTERS%
 set RELEASE=-DAGT_RELEASE_BUILD
 
-set GCCPATH=C:\msys\1.0\brown
+set GCCPATH=..\brown
 set GPP=!GCCPATH!\bin\m68k-ataribrownart-elf-g++
 set GCC=!GCCPATH!\bin\m68k-ataribrownart-elf-gcc
 set AS=!GCCPATH!\bin\m68k-ataribrownart-elf-as
@@ -54,32 +54,34 @@ tos      ^
 libcxx\zerocrtfini ^
 libcxx\browncrt++
 
-set ASMFILES=
+set ASMFILES=libcxx\brownboot
 
 set GASFILES=font
 
 rem SETLOCAL EnableDelayedExpansion
-rem for %%I in (%CPPFILES% %CFILES% %ASMFILES% %GASFILES%) do set objfiles=!objfiles! obj\%%I.o
+rem for %%I in (%CPPFILES% %CFILES% %ASMFILES% %GASFILES%) do set objfiles=!objfiles! %%I.o
 set objfiles=^
-obj/main.o ^
-obj/edit.o ^
-obj/linefunc.o ^
-obj/normal.o ^
-obj/cmdline.o ^
-obj/hexchars.o ^
-obj/misccmds.o ^
-obj/help.o ^
-obj/ptrfunc.o ^
-obj/search.o ^
-obj/alloc.o ^
-obj/mark.o ^
-obj/screen.o ^
-obj/fileio.o ^
-obj/param.o ^
-obj/regexp.o ^
-obj/regsub.o ^
-obj/tos.o ^
-obj/font.o
+libcxx/brownboot.o ^
+libcxx/browncrt++.o ^
+main.o ^
+edit.o ^
+linefunc.o ^
+normal.o ^
+cmdline.o ^
+hexchars.o ^
+misccmds.o ^
+help.o ^
+ptrfunc.o ^
+search.o ^
+alloc.o ^
+mark.o ^
+screen.o ^
+fileio.o ^
+param.o ^
+regexp.o ^
+regsub.o ^
+tos.o ^
+font.o
 rem obj\agtsys\libcxx\browncrtn.o
 
 if /I "%1"=="clean" goto :cleanup
@@ -87,20 +89,20 @@ if /I "%1"=="clean" goto :cleanup
 del %OUTPUT_FOLDER%\%PROJNAME%.ttp 2>NUL
 
 rem Compile cpp files
-for %%I in (%CPPFILES%) do call :checkrun "obj\%%I.o" "%%I.cpp" "%GPP% %CPPFLAGS% %INCPATH% -o obj\%%I.o %%I.cpp"
+for %%I in (%CPPFILES%) do call :checkrun "%%I.o" "%%I.cpp" "%GPP% %CPPFLAGS% %INCPATH% -o %%I.o %%I.cpp"
 
 rem Compile c files
-for %%I in (%CFILES%) do call :checkrun "obj\%%I.o" "%%I.c" "%GCC% %CFLAGS% %INCPATH% -o obj\%%I.o %%I.c"
+for %%I in (%CFILES%) do call :checkrun "%%I.o" "%%I.c" "%GCC% %CFLAGS% %INCPATH% -o %%I.o %%I.c"
 
 rem Assemble .s files
-for %%I in (%ASMFILES%) do call :checkrun "obj\%%I.o" "%%I.s" "%ASM% %ASMFLAGS% -lobj\%%I.o.lst -o obj\%%I.o %%I.s"
+for %%I in (%ASMFILES%) do call :checkrun "%%I.o" "%%I.s" "%ASM% %ASMFLAGS% -l%%I.o.lst -o %%I.o %%I.s"
 if errorlevel 1 exit /b
-for %%I in (%GASFILES%) do call :checkrun "obj\%%I.o" "%%I.gas" "%AS% -o obj\%%I.o %%I.gas"
+for %%I in (%GASFILES%) do call :checkrun "%%I.o" "%%I.gas" "%AS% -o %%I.o %%I.gas"
 if errorlevel 1 exit /b
 
 rem Compile game code
-echo %GCC% %CPPFLAGS% %INCPATH% -o obj\%PROJNAME%.o %PROJNAME%.cpp
-rem %GCC% %CPPFLAGS% %INCPATH% -S -o obj\%PROJNAME%.s %PROJNAME%.cpp
+echo %GCC% %CPPFLAGS% %INCPATH% -o %PROJNAME%.o %PROJNAME%.cpp
+rem %GCC% %CPPFLAGS% %INCPATH% -S -o %PROJNAME%.s %PROJNAME%.cpp
 
 if errorlevel 1 exit /b
 
@@ -119,7 +121,7 @@ bin\brownout -s -x -f -p 0 -i %PROJNAME%.elf -o %OUTPUT_FOLDER%\%PROJNAME%.ttp
 
 echo ---------------------------------------------------------------------------------
 echo BUT:
-find /n "@@" *.cpp *.s
+find /n "@@" *.c
 
 exit /b
 
@@ -128,7 +130,7 @@ exit /b
 for %%I in (%objfiles%) do (
 del /q %%I %%I.lst 2>NUL
 )
-del obj\%PROJNAME%.o 2>NUL
+del %PROJNAME%.o 2>NUL
 del%PROJNAME%.elf 2>NUL
 del %OUTPUT_FOLDER%\%PROJNAME%.tos 2>NUL
 
@@ -138,10 +140,12 @@ rem checkrun <source_file> <file_to_generate> <command_to_run>
 rem will only execute <command_to_run> when <file_to_generate> either
 rem doesn't exist or is older than <source_file>
 :checkrun
-if not exist %1 (echo %1 not exist
-goto run)
+if not exist %1 goto run
+rem @echo on
 for /F %%i IN ('dir /b /OD %1 %2 ^| more +1') DO SET NEWEST=%%i
-if /i %NEWEST%==%2 GOTO run
+rem @echo off
+rem echo "%NEWEST%"==%2
+if /i "%NEWEST%"==%2 GOTO run
 
 echo File %1 is up to date
 
