@@ -52,17 +52,23 @@ regexp   ^
 regsub   ^
 tos      ^
 libcxx\zerocrtfini ^
-libcxx\browncrt++
+libcxx\browncrt++ ^
+libcxx\brownmint++
 
 set ASMFILES=libcxx\brownboot
 
-set GASFILES=font
+set GASFILES=font ^
+libcxx\browncrti ^
+libcxx\browncrtn
 
 rem SETLOCAL EnableDelayedExpansion
 rem for %%I in (%CPPFILES% %CFILES% %ASMFILES% %GASFILES%) do set objfiles=!objfiles! %%I.o
 set objfiles=^
-libcxx/brownboot.o ^
+%GCCPATH%\m68k-ataribrownart-elf\lib\crt0.o ^
 libcxx/browncrt++.o ^
+libcxx/browncrti.o ^
+libcxx/brownmint++.o ^
+libcxx/zerocrtfini.o ^
 main.o ^
 edit.o ^
 linefunc.o ^
@@ -81,8 +87,8 @@ param.o ^
 regexp.o ^
 regsub.o ^
 tos.o ^
-font.o
-rem obj\agtsys\libcxx\browncrtn.o
+font.o ^
+libcxx/browncrtn.o
 
 if /I "%1"=="clean" goto :cleanup
 
@@ -101,7 +107,7 @@ for %%I in (%GASFILES%) do call :checkrun "%%I.o" "%%I.gas" "%AS% -o %%I.o %%I.g
 if errorlevel 1 exit /b
 
 rem Compile game code
-echo %GCC% %CPPFLAGS% %INCPATH% -o %PROJNAME%.o %PROJNAME%.cpp
+rem echo %GCC% %CPPFLAGS% %INCPATH% -o %PROJNAME%.o %PROJNAME%.cpp
 rem %GCC% %CPPFLAGS% %INCPATH% -S -o %PROJNAME%.s %PROJNAME%.cpp
 
 if errorlevel 1 exit /b
