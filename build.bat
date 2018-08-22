@@ -27,10 +27,10 @@ set ASM=%RMAC%
 
 set PATH=%PATH%;%GCCPATH%\bin
 
-if not exist obj mkdir obj
-if not exist obj\libcxx mkdir obj\libcxx
+rem if not exist obj mkdir obj
+rem if not exist obj\libcxx mkdir obj\libcxx
 
-set CPPFILES=libcxx\zerolibc 
+set CPPFILES=
 
 set CFILES=^
 main     ^
@@ -51,14 +51,12 @@ param    ^
 regexp   ^
 regsub   ^
 tos      ^
-libcxx\zerocrtfini ^
 libcxx\browncrt++ ^
 libcxx\brownmint++
 
 set ASMFILES=libcxx\brownboot
 
 set GASFILES=font ^
-libcxx\browncrti ^
 libcxx\browncrtn
 
 rem SETLOCAL EnableDelayedExpansion
@@ -66,9 +64,7 @@ rem for %%I in (%CPPFILES% %CFILES% %ASMFILES% %GASFILES%) do set objfiles=!objf
 set objfiles=^
 %GCCPATH%\m68k-ataribrownart-elf\lib\crt0.o ^
 libcxx/browncrt++.o ^
-libcxx/browncrti.o ^
 libcxx/brownmint++.o ^
-libcxx/zerocrtfini.o ^
 main.o ^
 edit.o ^
 linefunc.o ^
@@ -95,16 +91,27 @@ if /I "%1"=="clean" goto :cleanup
 del %OUTPUT_FOLDER%\%PROJNAME%.ttp 2>NUL
 
 rem Compile cpp files
-for %%I in (%CPPFILES%) do call :checkrun "%%I.o" "%%I.cpp" "%GPP% %CPPFLAGS% %INCPATH% -o %%I.o %%I.cpp"
+for %%I in (%CPPFILES%) do (
+call :checkrun "%%I.o" "%%I.cpp" "%GPP% %CPPFLAGS% %INCPATH% -o %%I.o %%I.cpp"
+if errorlevel 1 exit /b
+)
 
 rem Compile c files
-for %%I in (%CFILES%) do call :checkrun "%%I.o" "%%I.c" "%GCC% %CFLAGS% %INCPATH% -o %%I.o %%I.c"
+for %%I in (%CFILES%) do (
+call :checkrun "%%I.o" "%%I.c" "%GCC% %CFLAGS% %INCPATH% -o %%I.o %%I.c"
+if errorlevel 1 exit /b
+)
 
 rem Assemble .s files
-for %%I in (%ASMFILES%) do call :checkrun "%%I.o" "%%I.s" "%ASM% %ASMFLAGS% -l%%I.o.lst -o %%I.o %%I.s"
+rem for %%I in (%ASMFILES%) do (
+call :checkrun "%%I.o" "%%I.s" "%ASM% %ASMFLAGS% -l%%I.o.lst -o %%I.o %%I.s"
+rem if errorlevel 1 exit /b
+)
+
+for %%I in (%GASFILES%) do (
+call :checkrun "%%I.o" "%%I.gas" "%AS% -o %%I.o %%I.gas"
 if errorlevel 1 exit /b
-for %%I in (%GASFILES%) do call :checkrun "%%I.o" "%%I.gas" "%AS% -o %%I.o %%I.gas"
-if errorlevel 1 exit /b
+)
 
 rem Compile game code
 rem echo %GCC% %CPPFLAGS% %INCPATH% -o %PROJNAME%.o %PROJNAME%.cpp
